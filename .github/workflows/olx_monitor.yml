@@ -38,8 +38,6 @@ jobs:
       # ── Codzienny scraping i zapis do Excela ─────────────────────────────
       - name: Uruchom OLX Monitor (scraping)
         run: python olx_monitor.py
-        env:
-          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
 
       # ── Tygodniowy raport e-mail (tylko w poniedziałek lub ręcznie) ──────
       - name: Wyślij tygodniowy raport e-mail
@@ -66,10 +64,6 @@ jobs:
             cat data/last_run.json >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
-          if [ -f data/sheets_url.txt ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "🔗 **Google Sheets:** $(cat data/sheets_url.txt)" >> $GITHUB_STEP_SUMMARY
-          fi
 
       # ── Commit zaktualizowanego pliku Excel ──────────────────────────────
       - name: Zapisz plik Excel do repozytorium
@@ -78,4 +72,5 @@ jobs:
           git config user.email "bot@github-actions"
           git add data/olx_monitoring.xlsx data/last_run.json
           git diff --cached --quiet || git commit -m "📊 OLX Monitor $(date +'%Y-%m-%d %H:%M')"
+          git pull --rebase origin main
           git push
