@@ -52,7 +52,7 @@ jobs:
           fi
         env:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
-          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       # ── Podsumowanie w logach GitHub ─────────────────────────────────────
       - name: Pokaż wyniki (summary)
