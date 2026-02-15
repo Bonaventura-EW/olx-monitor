@@ -1,0 +1,35 @@
+{
+  "date": "2026-02-15 20:58",
+  "results": {
+    "wszystkie-lublin": {
+      "new": 0,
+      "deleted": 0,
+      "total": 431,
+      "status": "OK"
+    },
+    "artymiuk": {
+      "new": 0,
+      "deleted": 0,
+      "total": 0,
+      "status": "OK"
+    },
+    "poqui": {
+      "new": 5,
+      "deleted": 0,
+      "total": 5,
+      "status": "OK"
+    },
+    "stylowepokoje": {
+      "new": 2,
+      "deleted": 0,
+      "total": 2,
+      "status": "OK"
+    },
+    "villahome": {
+      "new": 0,
+      "deleted": 0,
+      "total": 0,
+      "status": "OK"
+    }
+  }
+}
