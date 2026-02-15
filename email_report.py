@@ -234,27 +234,26 @@ def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
 </html>"""
 
 
-# ─── ANALIZA AI (Claude API) ──────────────────────────────────────────────────
+# ─── ANALIZA AI (Google Gemini API) ──────────────────────────────────────────
 
 def generate_ai_analysis(summary: dict, weekly_data: dict) -> str:
-    """Wysyła dane do Claude API i zwraca analizę tekstową (5-10 zdań)."""
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    """Wysyła dane do Google Gemini API i zwraca analizę tekstową (5-10 zdań)."""
+    api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
-        return "⚠  Analiza AI niedostępna – brak klucza ANTHROPIC_API_KEY."
+        return "⚠  Analiza AI niedostępna – brak klucza GEMINI_API_KEY."
 
-    # Przygotuj dane dla modelu
     data_for_ai = {}
     for profile, s in summary.items():
         data_for_ai[profile] = {
-            "stan_na_koniec_tygodnia":     s["last_count"],
-            "stan_na_poczatek_tygodnia":   s["first_count"],
-            "laczna_liczba_nowych":        s["total_new"],
-            "laczna_liczba_usunietych":    s["total_deleted"],
-            "zmiana_netto":                s["net_week"],
-            "dni_monitorowania":           s["days_tracked"],
+            "stan_na_koniec_tygodnia":   s["last_count"],
+            "stan_na_poczatek_tygodnia": s["first_count"],
+            "laczna_liczba_nowych":      s["total_new"],
+            "laczna_liczba_usunietych":  s["total_deleted"],
+            "zmiana_netto":              s["net_week"],
+            "dni_monitorowania":         s["days_tracked"],
         }
 
-    prompt = f"""Jesteś analitykiem rynku nieruchomości. 
+    prompt = f"""Jesteś analitykiem rynku nieruchomości.
 Poniżej masz tygodniowe dane z monitoringu ogłoszeń na OLX.pl (stancje i pokoje w Lublinie).
 
 Dane z ostatnich 7 dni:
@@ -270,24 +269,18 @@ Napisz zwięzłą analizę (5-10 zdań) po polsku. Uwzględnij:
 Pisz naturalnie, bez wypunktowań, jako spójny tekst analityczny."""
 
     try:
-        resp = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key":         api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type":      "application/json",
-            },
-            json={
-                "model":      "claude-sonnet-4-20250514",
-                "max_tokens": 600,
-                "messages":   [{"role": "user", "content": prompt}],
-            },
-            timeout=30,
-        )
+        url  = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        resp = requests.post(url, json={
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"maxOutputTokens": 600, "temperature": 0.7},
+        }, timeout=30)
+
         if not resp.ok:
-            print(f"  ⚠  API error {resp.status_code}: {resp.text}")
-            return f"⚠ Błąd API ({resp.status_code}): {resp.json().get('error', {}).get('message', resp.text)}"
-        return resp.json()["content"][0]["text"].strip()
+            print(f"  ⚠  Gemini API error {resp.status_code}: {resp.text}")
+            return f"⚠ Błąd API Gemini ({resp.status_code}): {resp.text[:200]}"
+
+        return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+
     except Exception as e:
         return f"⚠  Błąd generowania analizy AI: {e}"
 
