@@ -269,7 +269,7 @@ Napisz zwięzłą analizę (5-10 zdań) po polsku. Uwzględnij:
 Pisz naturalnie, bez wypunktowań, jako spójny tekst analityczny."""
 
     try:
-        url  = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+        url  = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
         resp = requests.post(url, json={
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"maxOutputTokens": 600, "temperature": 0.7},
