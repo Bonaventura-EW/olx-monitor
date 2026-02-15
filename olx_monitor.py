@@ -1,350 +1,357 @@
-import requests
-from bs4 import BeautifulSoup
-import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
-from datetime import datetime, date
-import os
-import re
-import time
-import json
+"""
+Tygodniowy raport e-mail z analizą AI.
+Wysyłany w każdy poniedziałek – zbiera dane z ostatnich 7 dni z pliku Excel
+i wysyła podsumowanie przez Gmail SMTP.
+"""
 
-# Opcjonalna synchronizacja z Google Sheets
-ENABLE_SHEETS_SYNC = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "") != ""
+import smtplib
+import json
+import os
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+from datetime import datetime, timedelta
+import openpyxl
+import requests
 
 # ─── KONFIGURACJA ────────────────────────────────────────────────────────────
 
+SENDER_EMAIL    = "slowholidays00@gmail.com"
+RECIPIENT_EMAIL = "malczarski@gmail.com"
+EXCEL_FILE      = "data/olx_monitoring.xlsx"
+
 PROFILES = [
-    {
-        "name": "wszystkie-lublin",
-        "url": "https://www.olx.pl/nieruchomosci/stancje-pokoje/lublin/",
-        "type": "category"
-    },
-    {
-        "name": "artymiuk",
-        "url": "https://www.olx.pl/oferty/uzytkownik/BAm3j/",
-        "type": "user"
-    },
-    {
-        "name": "poqui",
-        "url": "https://www.olx.pl/oferty/uzytkownik/p8eWV/",
-        "type": "user"
-    },
-    {
-        "name": "stylowepokoje",
-        "url": "https://www.olx.pl/oferty/uzytkownik/3cxbz/",
-        "type": "user"
-    },
-    {
-        "name": "villahome",
-        "url": "https://www.olx.pl/oferty/uzytkownik/1n7fOJ/",
-        "type": "user"
-    },
+    "wszystkie-lublin",
+    "artymiuk",
+    "poqui",
+    "stylowepokoje",
+    "villahome",
 ]
 
-EXCEL_FILE = "data/olx_monitoring.xlsx"
+# ─── ZBIERANIE DANYCH Z EXCELA ───────────────────────────────────────────────
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-}
+def get_weekly_data() -> dict:
+    """Odczytuje dane z ostatnich 7 dni z każdej zakładki Excela."""
+    if not os.path.exists(EXCEL_FILE):
+        return {}
 
-# ─── KOLORY ──────────────────────────────────────────────────────────────────
-
-COLOR_HEADER_BG   = "2C5F8A"   # ciemny niebieski – nagłówki
-COLOR_HEADER_FONT = "FFFFFF"   # biały
-COLOR_NEW_BG      = "C6EFCE"   # zielony – nowe ogłoszenia
-COLOR_DEL_BG      = "FFC7CE"   # czerwony – usunięte
-COLOR_DATE_BG     = "D9E1F2"   # jasny niebieski – wiersz daty
-COLOR_ODD_ROW     = "F2F7FB"   # bardzo jasny niebieski – naprzemienne wiersze
-COLOR_SUMMARY_BG  = "FFF2CC"   # żółty – zakładka PODSUMOWANIE
-
-# ─── SCRAPING ────────────────────────────────────────────────────────────────
-
-def get_ad_count(url: str) -> int | None:
-    """Pobiera liczbę ogłoszeń z podanego URL."""
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.content, "html.parser")
-
-        # Metoda 1: atrybut data-testid="total-count"
-        el = soup.find(attrs={"data-testid": "total-count"})
-        if el:
-            digits = re.sub(r"\D", "", el.get_text())
-            if digits:
-                return int(digits)
-
-        # Metoda 2: zlicz karty ogłoszeń
-        cards = soup.find_all("div", {"data-cy": "l-card"})
-        if cards:
-            return len(cards)
-
-        # Metoda 3: regex w h1
-        h1 = soup.find("h1")
-        if h1:
-            m = re.search(r"(\d[\d\s]*)\s*ogłoszeń", h1.get_text())
-            if m:
-                return int(re.sub(r"\D", "", m.group(1)))
-
-        # Metoda 4: meta description
-        meta = soup.find("meta", {"name": "description"})
-        if meta:
-            m = re.search(r"(\d+)\s*ogłoszeń", meta.get("content", ""))
-            if m:
-                return int(m.group(1))
-
-        return 0
-
-    except Exception as e:
-        print(f"  ⚠  Błąd przy {url}: {e}")
-        return None
-
-
-def get_individual_ads(url: str) -> list[dict]:
-    """
-    Pobiera listę ogłoszeń (id + tytuł) ze strony profilu użytkownika.
-    Używana do śledzenia konkretnych ogłoszeń (nowe / usunięte).
-    """
-    ads = []
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.content, "html.parser")
-
-        for card in soup.find_all("div", {"data-cy": "l-card"}):
-            link = card.find("a", href=True)
-            if not link:
-                continue
-            href = link["href"]
-            # wyciągnij ID ogłoszenia z URL-a
-            m = re.search(r"ID(\w+)\.html", href)
-            ad_id = m.group(1) if m else href.split("/")[-1]
-            title_el = card.find(["h3", "h4", "h6"])
-            title = title_el.get_text(strip=True) if title_el else "Brak tytułu"
-            ads.append({"id": ad_id, "title": title, "url": href})
-
-    except Exception as e:
-        print(f"  ⚠  Błąd przy pobieraniu ogłoszeń z {url}: {e}")
-
-    return ads
-
-
-# ─── EXCEL: POMOCNICZE ───────────────────────────────────────────────────────
-
-def thin_border() -> Border:
-    s = Side(style="thin", color="CCCCCC")
-    return Border(left=s, right=s, top=s, bottom=s)
-
-
-def header_cell(ws, row: int, col: int, value: str, width: int | None = None):
-    c = ws.cell(row=row, column=col, value=value)
-    c.font      = Font(bold=True, color=COLOR_HEADER_FONT, name="Arial", size=10)
-    c.fill      = PatternFill("solid", start_color=COLOR_HEADER_BG)
-    c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    c.border    = thin_border()
-    if width:
-        ws.column_dimensions[get_column_letter(col)].width = width
-
-
-def data_cell(ws, row: int, col: int, value, bg: str | None = None,
-              bold: bool = False, align: str = "center"):
-    c = ws.cell(row=row, column=col, value=value)
-    c.font      = Font(bold=bold, name="Arial", size=10)
-    c.alignment = Alignment(horizontal=align, vertical="center", wrap_text=True)
-    c.border    = thin_border()
-    if bg:
-        c.fill = PatternFill("solid", start_color=bg)
-    return c
-
-
-# ─── EXCEL: INICJALIZACJA / ŁADOWANIE ────────────────────────────────────────
-
-def load_or_create_workbook() -> openpyxl.Workbook:
-    if os.path.exists(EXCEL_FILE):
-        return openpyxl.load_workbook(EXCEL_FILE)
-    wb = openpyxl.Workbook()
-    wb.remove(wb.active)         # usuń domyślny pusty arkusz
-    _create_summary_sheet(wb)
-    for p in PROFILES:
-        _create_profile_sheet(wb, p["name"])
-    return wb
-
-
-def _create_summary_sheet(wb: openpyxl.Workbook):
-    ws = wb.create_sheet("PODSUMOWANIE", 0)
-    ws.sheet_properties.tabColor = "2C5F8A"
-    ws.row_dimensions[1].height = 30
-
-    cols = ["Profil", "Data ostatniego sprawdzenia", "Liczba ogłoszeń",
-            "Nowe (+)", "Usunięte (−)", "Status"]
-    widths = [22, 26, 20, 12, 14, 14]
-    for i, (col, w) in enumerate(zip(cols, widths), 1):
-        header_cell(ws, 1, i, col, w)
-
-    for i, p in enumerate(PROFILES, 2):
-        ws.cell(row=i, column=1, value=p["name"])
-        ws.row_dimensions[i].height = 18
-
-    ws.freeze_panes = "A2"
-
-
-def _create_profile_sheet(wb: openpyxl.Workbook, name: str):
-    ws = wb.create_sheet(name)
-    ws.row_dimensions[1].height = 30
-
-    cols = ["Data", "Łączna liczba ogłoszeń", "Nowe ogłoszenia (+)",
-            "Usunięte ogłoszenia (−)", "Zmiana netto", "Szczegóły nowych",
-            "Szczegóły usuniętych", "Status"]
-    widths = [20, 24, 20, 22, 14, 40, 40, 14]
-    for i, (col, w) in enumerate(zip(cols, widths), 1):
-        header_cell(ws, 1, i, col, w)
-
-    ws.freeze_panes = "A2"
-
-
-# ─── EXCEL: ZAPIS DANYCH ─────────────────────────────────────────────────────
-
-def _get_previous_data(ws) -> dict:
-    """Zwraca dane z ostatniego wiersza arkusza profilu."""
-    max_row = ws.max_row
-    if max_row < 2:
-        return {"count": None, "ads": []}
-
-    # Szukamy ostatniego wiersza z danymi (od końca)
-    for r in range(max_row, 1, -1):
-        val = ws.cell(row=r, column=2).value
-        if val is not None:
-            prev_count = int(val) if str(val).isdigit() else None
-            # Odczytujemy zapisane ID ogłoszeń z kolumny 9 (ukryta)
-            raw = ws.cell(row=r, column=9).value or ""
-            prev_ids = set(raw.split("|")) if raw else set()
-            return {"count": prev_count, "ids": prev_ids, "row": r}
-
-    return {"count": None, "ids": set(), "row": 1}
-
-
-def update_profile_sheet(ws, profile: dict, today_str: str,
-                          total: int | None, today_ads: list[dict]):
-    prev = _get_previous_data(ws)
-    prev_count = prev.get("count")
-    prev_ids   = prev.get("ids", set())
-
-    today_ids  = {a["id"] for a in today_ads}
-    new_ids    = today_ids - prev_ids
-    del_ids    = prev_ids - today_ids
-
-    # Nowe ogłoszenia
-    new_ads = [a for a in today_ads if a["id"] in new_ids]
-    new_count = len(new_ads) if today_ids else (
-        max(0, (total or 0) - (prev_count or 0)) if prev_count is not None else 0
-    )
-
-    # Usunięte
-    del_count = len(del_ids)
-
-    net_change = (total or 0) - (prev_count or 0) if prev_count is not None else 0
-
-    new_row = ws.max_row + 1
-    row_bg = COLOR_ODD_ROW if new_row % 2 == 0 else None
-
-    status = "OK" if total is not None else "BŁĄD"
-
-    def bg(special=None):
-        return special or row_bg
-
-    data_cell(ws, new_row, 1, today_str,  bg=COLOR_DATE_BG, bold=True)
-    data_cell(ws, new_row, 2, total,       bg=bg())
-    data_cell(ws, new_row, 3, new_count,   bg=bg(COLOR_NEW_BG if new_count > 0 else None), bold=(new_count > 0))
-    data_cell(ws, new_row, 4, del_count,   bg=bg(COLOR_DEL_BG if del_count > 0 else None), bold=(del_count > 0))
-    data_cell(ws, new_row, 5, net_change,  bg=bg(), bold=True)
-
-    new_details = "; ".join([f"{a['title'][:50]}" for a in new_ads[:10]]) or "—"
-    del_details = "; ".join(list(del_ids)[:10]) or "—"
-
-    data_cell(ws, new_row, 6, new_details, bg=bg(COLOR_NEW_BG if new_count > 0 else None), align="left")
-    data_cell(ws, new_row, 7, del_details, bg=bg(COLOR_DEL_BG if del_count > 0 else None), align="left")
-    data_cell(ws, new_row, 8, status,      bg=bg("C6EFCE" if status == "OK" else "FFC7CE"))
-
-    # Kolumna 9 – ukryta, przechowuje ID ogłoszeń do porównania następnego dnia
-    ws.cell(row=new_row, column=9, value="|".join(today_ids))
-    ws.column_dimensions["I"].hidden = True
-    ws.row_dimensions[new_row].height = 18
-
-    return {"new": new_count, "deleted": del_count, "total": total, "status": status}
-
-
-def update_summary_sheet(wb: openpyxl.Workbook, today_str: str, results: dict):
-    ws = wb["PODSUMOWANIE"]
-    for i, p in enumerate(PROFILES, 2):
-        r = results.get(p["name"], {})
-        status_bg = "C6EFCE" if r.get("status") == "OK" else "FFC7CE"
-        data_cell(ws, i, 1, p["name"],         bold=True,  align="left")
-        data_cell(ws, i, 2, today_str)
-        data_cell(ws, i, 3, r.get("total"))
-        data_cell(ws, i, 4, r.get("new"),      bg="C6EFCE" if (r.get("new") or 0) > 0 else None, bold=True)
-        data_cell(ws, i, 5, r.get("deleted"),  bg="FFC7CE" if (r.get("deleted") or 0) > 0 else None, bold=True)
-        data_cell(ws, i, 6, r.get("status"),   bg=status_bg)
-
-
-# ─── GŁÓWNA LOGIKA ───────────────────────────────────────────────────────────
-
-def run():
-    today_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-    print(f"\n{'='*55}")
-    print(f"  OLX Monitor  |  {today_str}")
-    print(f"{'='*55}")
-
-    os.makedirs("data", exist_ok=True)
-    wb = load_or_create_workbook()
-    results  = {}
-    all_ads  = {}   # przechowuje listę ogłoszeń dla Sheets sync
+    wb   = openpyxl.load_workbook(EXCEL_FILE, data_only=True)
+    week_ago = datetime.now() - timedelta(days=7)
+    data = {}
 
     for profile in PROFILES:
-        name = profile["name"]
-        url  = profile["url"]
-        print(f"\n▶  {name}")
-        print(f"   URL: {url}")
+        if profile not in wb.sheetnames:
+            continue
 
-        total     = get_ad_count(url)
-        today_ads = []
+        ws   = wb[profile]
+        rows = []
 
-        if profile["type"] == "user":
-            today_ads = get_individual_ads(url)
-            print(f"   Ogłoszeń (scraping listy): {len(today_ads)}")
-            if total is None:
-                total = len(today_ads)
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not row[0]:
+                continue
+            try:
+                # Kolumna A: data jako string "2026-02-15 09:00"
+                row_date = datetime.strptime(str(row[0])[:16], "%Y-%m-%d %H:%M")
+            except Exception:
+                continue
 
-        print(f"   Łącznie: {total}")
-        time.sleep(2)
+            if row_date >= week_ago:
+                rows.append({
+                    "date":    str(row[0])[:10],
+                    "total":   row[1] or 0,
+                    "new":     row[2] or 0,
+                    "deleted": row[3] or 0,
+                    "net":     row[4] or 0,
+                    "status":  row[7] or "?",
+                })
 
-        if name not in wb.sheetnames:
-            _create_profile_sheet(wb, name)
+        if rows:
+            data[profile] = rows
 
-        ws = wb[name]
-        r  = update_profile_sheet(ws, profile, today_str, total, today_ads)
-        results[name]  = r
-        all_ads[name]  = today_ads
-        print(f"   ✅  Nowe: +{r['new']}  |  Usunięte: -{r['deleted']}  |  Status: {r['status']}")
+    return data
 
-    update_summary_sheet(wb, today_str, results)
-    wb.save(EXCEL_FILE)
-    print(f"\n✔  Dane zapisane → {EXCEL_FILE}")
 
-    # Synchronizacja z Google Sheets (jeśli skonfigurowana)
-    if ENABLE_SHEETS_SYNC:
-        from sheets_sync import sync_to_sheets
-        sync_to_sheets(today_str, results, all_ads)
+def compute_summary(weekly_data: dict) -> dict:
+    """Oblicza sumaryczne statystyki tygodniowe dla każdego profilu."""
+    summary = {}
+    for profile, rows in weekly_data.items():
+        total_new     = sum(r["new"]     for r in rows)
+        total_deleted = sum(r["deleted"] for r in rows)
+        last_total    = rows[-1]["total"] if rows else 0
+        first_total   = rows[0]["total"]  if rows else 0
+        errors        = sum(1 for r in rows if r["status"] != "OK")
+
+        summary[profile] = {
+            "days_tracked": len(rows),
+            "total_new":     total_new,
+            "total_deleted": total_deleted,
+            "net_week":      total_new - total_deleted,
+            "last_count":    last_total,
+            "first_count":   first_total,
+            "errors":        errors,
+            "rows":          rows,
+        }
+    return summary
+
+
+# ─── HTML E-MAIL ─────────────────────────────────────────────────────────────
+
+def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
+    today      = datetime.now().strftime("%d.%m.%Y")
+    week_start = (datetime.now() - timedelta(days=6)).strftime("%d.%m.%Y")
+
+    # ── Tabela podsumowania tygodnia ──
+    summary_rows = ""
+    for profile, s in summary.items():
+        trend       = "↑" if s["net_week"] > 0 else ("↓" if s["net_week"] < 0 else "→")
+        new_style   = "color:#1a7a3c;font-weight:bold;" if s["total_new"] > 0 else ""
+        del_style   = "color:#c0392b;font-weight:bold;" if s["total_deleted"] > 0 else ""
+        net_color   = "#1a7a3c" if s["net_week"] > 0 else ("#c0392b" if s["net_week"] < 0 else "#555")
+        err_style   = "color:#c0392b;font-weight:bold;" if s["errors"] > 0 else "color:#888;"
+        net_str     = f"{s['net_week']:+d}{trend}"
+
+        summary_rows += f"""
+        <tr>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee;font-weight:600;">{profile}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee;text-align:center;">{s['days_tracked']}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee;text-align:center;font-weight:600;">{s['last_count']}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee;text-align:center;{new_style}">{s['total_new']:+d}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee;text-align:center;{del_style}">{s['total_deleted']}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee;text-align:center;color:{net_color};font-weight:bold;">{net_str}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee;text-align:center;{err_style}">{s['errors']}</td>
+        </tr>"""
+
+    # ── Zestawienie dzienne ──
+    daily_sections = ""
+    for profile, rows in weekly_data.items():
+        daily_rows = ""
+        for i, r in enumerate(rows):
+            bg       = "#f9f9f9" if i % 2 == 0 else "#ffffff"
+            net_str  = f"{r['net']:+d}" if r['net'] != 0 else "—"
+            net_col  = "#1a7a3c" if r['net'] > 0 else ("#c0392b" if r['net'] < 0 else "#888")
+            new_col  = "#1a7a3c" if r['new'] > 0 else "#333"
+            del_col  = "#c0392b" if r['deleted'] > 0 else "#333"
+            daily_rows += f"""
+            <tr style="background:{bg};">
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;">{r['date']}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;font-weight:600;">{r['total']}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;color:{new_col};font-weight:{'bold' if r['new']>0 else 'normal'};">{r['new']:+d}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;color:{del_col};">{r['deleted']}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;color:{net_col};font-weight:bold;">{net_str}</td>
+            </tr>"""
+
+        daily_sections += f"""
+        <div style="margin-bottom:24px;">
+          <h3 style="margin:0 0 8px 0;font-size:13px;text-transform:uppercase;
+                     letter-spacing:1px;color:#2c5f8a;">{profile}</h3>
+          <table width="100%" cellpadding="0" cellspacing="0"
+                 style="border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:#2c5f8a;color:#fff;">
+                <th style="padding:8px 12px;text-align:left;">Data</th>
+                <th style="padding:8px 12px;text-align:center;">Ogłoszeń</th>
+                <th style="padding:8px 12px;text-align:center;">Nowe</th>
+                <th style="padding:8px 12px;text-align:center;">Usunięte</th>
+                <th style="padding:8px 12px;text-align:center;">Netto</th>
+              </tr>
+            </thead>
+            <tbody>{daily_rows}</tbody>
+          </table>
+        </div>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="pl">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,sans-serif;">
+<div style="max-width:680px;margin:32px auto;background:#fff;border-radius:10px;
+            overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
+
+  <!-- NAGŁÓWEK -->
+  <div style="background:#2c5f8a;padding:28px 32px;">
+    <h1 style="margin:0;color:#fff;font-size:20px;font-weight:700;">📊 OLX Monitor</h1>
+    <p style="margin:6px 0 0;color:#a8c8e8;font-size:13px;">
+      Raport tygodniowy &nbsp;·&nbsp; {week_start} – {today}
+    </p>
+  </div>
+
+  <div style="padding:28px 32px;">
+
+    <!-- PODSUMOWANIE TYGODNIA -->
+    <h2 style="margin:0 0 16px;font-size:15px;color:#2c5f8a;text-transform:uppercase;
+               letter-spacing:.5px;border-bottom:2px solid #2c5f8a;padding-bottom:8px;">
+      Podsumowanie tygodnia
+    </h2>
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="border-collapse:collapse;font-size:13px;margin-bottom:8px;">
+      <thead>
+        <tr style="background:#2c5f8a;color:#fff;">
+          <th style="padding:10px 14px;text-align:left;">Profil</th>
+          <th style="padding:10px 14px;text-align:center;">Dni</th>
+          <th style="padding:10px 14px;text-align:center;">Stan</th>
+          <th style="padding:10px 14px;text-align:center;">Nowe</th>
+          <th style="padding:10px 14px;text-align:center;">Usun.</th>
+          <th style="padding:10px 14px;text-align:center;">Netto</th>
+          <th style="padding:10px 14px;text-align:center;">Błędy</th>
+        </tr>
+      </thead>
+      <tbody>{summary_rows}</tbody>
+    </table>
+    <p style="margin:4px 0 24px;font-size:11px;color:#888;">
+      Stan = aktualna liczba ogłoszeń &nbsp;|&nbsp; Nowe = przybyło w tygodniu &nbsp;|&nbsp;
+      Usun. = usunięto &nbsp;|&nbsp; Netto = zmiana netto &nbsp;|&nbsp; Błędy = dni z błędem odczytu
+    </p>
+
+    <!-- ANALIZA AI -->
+    <h2 style="margin:0 0 12px;font-size:15px;color:#2c5f8a;text-transform:uppercase;
+               letter-spacing:.5px;border-bottom:2px solid #2c5f8a;padding-bottom:8px;">
+      🤖 Analiza
+    </h2>
+    <div style="background:#f0f4f8;border-left:4px solid #2c5f8a;padding:16px 20px;
+                border-radius:0 6px 6px 0;margin-bottom:28px;font-size:14px;
+                line-height:1.7;color:#333;">
+      {analysis.replace(chr(10), '<br>')}
+    </div>
+
+    <!-- ZESTAWIENIE DZIENNE -->
+    <h2 style="margin:0 0 16px;font-size:15px;color:#2c5f8a;text-transform:uppercase;
+               letter-spacing:.5px;border-bottom:2px solid #2c5f8a;padding-bottom:8px;">
+      📅 Zestawienie dzienne
+    </h2>
+    {daily_sections}
+
+  </div>
+
+  <!-- STOPKA -->
+  <div style="background:#f0f4f8;padding:16px 32px;text-align:center;
+              font-size:11px;color:#888;border-top:1px solid #e0e8f0;">
+    Raport wygenerowany automatycznie przez OLX Monitor &nbsp;·&nbsp;
+    GitHub Actions &nbsp;·&nbsp; {datetime.now().strftime("%Y-%m-%d %H:%M")}
+  </div>
+
+</div>
+</body>
+</html>"""
+
+
+# ─── ANALIZA AI (Claude API) ──────────────────────────────────────────────────
+
+def generate_ai_analysis(summary: dict, weekly_data: dict) -> str:
+    """Wysyła dane do Claude API i zwraca analizę tekstową (5-10 zdań)."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return "⚠  Analiza AI niedostępna – brak klucza ANTHROPIC_API_KEY."
+
+    # Przygotuj dane dla modelu
+    data_for_ai = {}
+    for profile, s in summary.items():
+        data_for_ai[profile] = {
+            "stan_na_koniec_tygodnia":     s["last_count"],
+            "stan_na_poczatek_tygodnia":   s["first_count"],
+            "laczna_liczba_nowych":        s["total_new"],
+            "laczna_liczba_usunietych":    s["total_deleted"],
+            "zmiana_netto":                s["net_week"],
+            "dni_monitorowania":           s["days_tracked"],
+        }
+
+    prompt = f"""Jesteś analitykiem rynku nieruchomości. 
+Poniżej masz tygodniowe dane z monitoringu ogłoszeń na OLX.pl (stancje i pokoje w Lublinie).
+
+Dane z ostatnich 7 dni:
+{json.dumps(data_for_ai, ensure_ascii=False, indent=2)}
+
+Napisz zwięzłą analizę (5-10 zdań) po polsku. Uwzględnij:
+- Ogólny trend na rynku pokoi w Lublinie (profil wszystkie-lublin)
+- Aktywność poszczególnych wynajmujących (artymiuk, poqui, stylowepokoje, villahome)
+- Czy rynek jest aktywny czy spokojny w tym tygodniu
+- Które profile są najbardziej aktywne i co to może oznaczać
+- Krótką rekomendację lub obserwację dla obserwującego rynek
+
+Pisz naturalnie, bez wypunktowań, jako spójny tekst analityczny."""
+
+    try:
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key":         api_key,
+                "anthropic-version": "2023-06-01",
+                "content-type":      "application/json",
+            },
+            json={
+                "model":      "claude-opus-4-5-20251101",
+                "max_tokens": 600,
+                "messages":   [{"role": "user", "content": prompt}],
+            },
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()["content"][0]["text"].strip()
+    except Exception as e:
+        return f"⚠  Błąd generowania analizy AI: {e}"
+
+
+# ─── WYSYŁANIE E-MAILA ───────────────────────────────────────────────────────
+
+def send_email(subject: str, html_body: str):
+    """Wysyła e-mail HTML przez Gmail SMTP."""
+    gmail_password = os.environ.get("GMAIL_APP_PASSWORD", "")
+    if not gmail_password:
+        print("⚠  Brak GMAIL_APP_PASSWORD – e-mail nie zostanie wysłany.")
+        return False
+
+    msg = MIMEMultipart("mixed")
+    msg["Subject"] = subject
+    msg["From"]    = SENDER_EMAIL
+    msg["To"]      = RECIPIENT_EMAIL
+
+    # Część HTML
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    # Załącz plik Excel jeśli istnieje
+    if os.path.exists(EXCEL_FILE):
+        today           = datetime.now().strftime("%Y-%m-%d")
+        attachment_name = f"OLX_Monitor_{today}.xlsx"
+        with open(EXCEL_FILE, "rb") as f:
+            part = MIMEBase("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            part.set_payload(f.read())
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", "attachment", filename=attachment_name)
+        msg.attach(part)
+        print(f"  📎 Załączono: {attachment_name}")
     else:
-        print("\n☁️  Google Sheets sync pominięty (brak GOOGLE_SERVICE_ACCOUNT_JSON)")
+        print("  ⚠  Plik Excel nie znaleziony – wysyłam bez załącznika.")
 
-    # Log JSON dla GitHub Actions summary
-    log = {"date": today_str, "results": results}
-    with open("data/last_run.json", "w", encoding="utf-8") as f:
-        json.dump(log, f, ensure_ascii=False, indent=2)
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(SENDER_EMAIL, gmail_password)
+            server.sendmail(SENDER_EMAIL, RECIPIENT_EMAIL, msg.as_string())
+        print(f"✅  E-mail wysłany → {RECIPIENT_EMAIL}")
+        return True
+    except Exception as e:
+        print(f"❌  Błąd wysyłania e-maila: {e}")
+        return False
+
+
+# ─── GŁÓWNA FUNKCJA ──────────────────────────────────────────────────────────
+
+def send_weekly_report():
+    print("\n📧  Generowanie tygodniowego raportu e-mail...")
+
+    weekly_data = get_weekly_data()
+    if not weekly_data:
+        print("⚠  Brak danych z ostatnich 7 dni – raport nie zostanie wysłany.")
+        return
+
+    summary  = compute_summary(weekly_data)
+    analysis = generate_ai_analysis(summary, weekly_data)
+
+    today   = datetime.now().strftime("%d.%m.%Y")
+    subject = f"📊 OLX Monitor – raport tygodniowy {today}"
+    html    = build_html_email(summary, weekly_data, analysis)
+
+    print("  ✉  Treść HTML wygenerowana, wysyłam...")
+    send_email(subject, html)
 
 
 if __name__ == "__main__":
-    run()
+    send_weekly_report()
