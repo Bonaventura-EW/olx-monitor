@@ -23,6 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Ustaw Python 3.11
         uses: actions/setup-python@v5
@@ -66,4 +67,5 @@ jobs:
           git add data/olx_monitoring.xlsx data/last_run.json
           git diff --cached --quiet && echo "Brak zmian" && exit 0
           git commit -m "📊 OLX Monitor $(date +'%Y-%m-%d %H:%M')"
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Bonaventura-EW/olx-monitor.git
           git push origin main --force
