@@ -278,13 +278,15 @@ Pisz naturalnie, bez wypunktowań, jako spójny tekst analityczny."""
                 "content-type":      "application/json",
             },
             json={
-                "model":      "claude-opus-4-5-20251101",
+                "model":      "claude-sonnet-4-20250514",
                 "max_tokens": 600,
                 "messages":   [{"role": "user", "content": prompt}],
             },
             timeout=30,
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            print(f"  ⚠  API error {resp.status_code}: {resp.text}")
+            return f"⚠ Błąd API ({resp.status_code}): {resp.json().get('error', {}).get('message', resp.text)}"
         return resp.json()["content"][0]["text"].strip()
     except Exception as e:
         return f"⚠  Błąd generowania analizy AI: {e}"
