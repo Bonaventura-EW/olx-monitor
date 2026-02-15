@@ -95,45 +95,143 @@ def compute_summary(weekly_data: dict) -> dict:
     return summary
 
 
-# ─── TABELA TEKSTOWA ─────────────────────────────────────────────────────────
+# ─── HTML E-MAIL ─────────────────────────────────────────────────────────────
 
-def build_text_table(summary: dict) -> str:
-    """Buduje czytelną tabelę ASCII do wklejenia w e-mail."""
-    header = (
-        f"{'Profil':<22} {'Dni':>4} {'Stan':>6} {'Nowe':>6} "
-        f"{'Usun.':>6} {'Netto':>6} {'Błędy':>6}"
-    )
-    sep = "─" * len(header)
-    lines = [sep, header, sep]
+def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
+    today      = datetime.now().strftime("%d.%m.%Y")
+    week_start = (datetime.now() - timedelta(days=6)).strftime("%d.%m.%Y")
 
+    # ── Tabela podsumowania tygodnia ──
+    summary_rows = ""
     for profile, s in summary.items():
-        trend = "↑" if s["net_week"] > 0 else ("↓" if s["net_week"] < 0 else "→")
-        line = (
-            f"{profile:<22} {s['days_tracked']:>4} {s['last_count']:>6} "
-            f"{s['total_new']:>+6} {s['total_deleted']:>6} "
-            f"{s['net_week']:>+5}{trend} {s['errors']:>5}"
-        )
-        lines.append(line)
+        trend       = "↑" if s["net_week"] > 0 else ("↓" if s["net_week"] < 0 else "→")
+        new_style   = "color:#1a7a3c;font-weight:bold;" if s["total_new"] > 0 else ""
+        del_style   = "color:#c0392b;font-weight:bold;" if s["total_deleted"] > 0 else ""
+        net_color   = "#1a7a3c" if s["net_week"] > 0 else ("#c0392b" if s["net_week"] < 0 else "#555")
+        err_style   = "color:#c0392b;font-weight:bold;" if s["errors"] > 0 else "color:#888;"
+        net_str     = f"{s['net_week']:+d}{trend}"
 
-    lines.append(sep)
-    return "\n".join(lines)
+        summary_rows += f"""
+        <tr>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee;font-weight:600;">{profile}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee;text-align:center;">{s['days_tracked']}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee;text-align:center;font-weight:600;">{s['last_count']}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee;text-align:center;{new_style}">{s['total_new']:+d}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee;text-align:center;{del_style}">{s['total_deleted']}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee;text-align:center;color:{net_color};font-weight:bold;">{net_str}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #eee;text-align:center;{err_style}">{s['errors']}</td>
+        </tr>"""
 
-
-def build_daily_breakdown(weekly_data: dict) -> str:
-    """Buduje dzienne zestawienie dla każdego profilu."""
-    sections = []
+    # ── Zestawienie dzienne ──
+    daily_sections = ""
     for profile, rows in weekly_data.items():
-        lines = [f"\n  {profile.upper()}"]
-        lines.append(f"  {'Data':<12} {'Ogłoszeń':>10} {'Nowe':>7} {'Usun.':>7} {'Netto':>7}")
-        lines.append("  " + "─" * 45)
-        for r in rows:
-            net_str = f"{r['net']:+d}" if r['net'] != 0 else "  —"
-            lines.append(
-                f"  {r['date']:<12} {r['total']:>10} "
-                f"{r['new']:>+7} {r['deleted']:>7} {net_str:>7}"
-            )
-        sections.append("\n".join(lines))
-    return "\n".join(sections)
+        daily_rows = ""
+        for i, r in enumerate(rows):
+            bg       = "#f9f9f9" if i % 2 == 0 else "#ffffff"
+            net_str  = f"{r['net']:+d}" if r['net'] != 0 else "—"
+            net_col  = "#1a7a3c" if r['net'] > 0 else ("#c0392b" if r['net'] < 0 else "#888")
+            new_col  = "#1a7a3c" if r['new'] > 0 else "#333"
+            del_col  = "#c0392b" if r['deleted'] > 0 else "#333"
+            daily_rows += f"""
+            <tr style="background:{bg};">
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;">{r['date']}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;font-weight:600;">{r['total']}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;color:{new_col};font-weight:{'bold' if r['new']>0 else 'normal'};">{r['new']:+d}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;color:{del_col};">{r['deleted']}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;color:{net_col};font-weight:bold;">{net_str}</td>
+            </tr>"""
+
+        daily_sections += f"""
+        <div style="margin-bottom:24px;">
+          <h3 style="margin:0 0 8px 0;font-size:13px;text-transform:uppercase;
+                     letter-spacing:1px;color:#2c5f8a;">{profile}</h3>
+          <table width="100%" cellpadding="0" cellspacing="0"
+                 style="border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:#2c5f8a;color:#fff;">
+                <th style="padding:8px 12px;text-align:left;">Data</th>
+                <th style="padding:8px 12px;text-align:center;">Ogłoszeń</th>
+                <th style="padding:8px 12px;text-align:center;">Nowe</th>
+                <th style="padding:8px 12px;text-align:center;">Usunięte</th>
+                <th style="padding:8px 12px;text-align:center;">Netto</th>
+              </tr>
+            </thead>
+            <tbody>{daily_rows}</tbody>
+          </table>
+        </div>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="pl">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,sans-serif;">
+<div style="max-width:680px;margin:32px auto;background:#fff;border-radius:10px;
+            overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
+
+  <!-- NAGŁÓWEK -->
+  <div style="background:#2c5f8a;padding:28px 32px;">
+    <h1 style="margin:0;color:#fff;font-size:20px;font-weight:700;">📊 OLX Monitor</h1>
+    <p style="margin:6px 0 0;color:#a8c8e8;font-size:13px;">
+      Raport tygodniowy &nbsp;·&nbsp; {week_start} – {today}
+    </p>
+  </div>
+
+  <div style="padding:28px 32px;">
+
+    <!-- PODSUMOWANIE TYGODNIA -->
+    <h2 style="margin:0 0 16px;font-size:15px;color:#2c5f8a;text-transform:uppercase;
+               letter-spacing:.5px;border-bottom:2px solid #2c5f8a;padding-bottom:8px;">
+      Podsumowanie tygodnia
+    </h2>
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="border-collapse:collapse;font-size:13px;margin-bottom:8px;">
+      <thead>
+        <tr style="background:#2c5f8a;color:#fff;">
+          <th style="padding:10px 14px;text-align:left;">Profil</th>
+          <th style="padding:10px 14px;text-align:center;">Dni</th>
+          <th style="padding:10px 14px;text-align:center;">Stan</th>
+          <th style="padding:10px 14px;text-align:center;">Nowe</th>
+          <th style="padding:10px 14px;text-align:center;">Usun.</th>
+          <th style="padding:10px 14px;text-align:center;">Netto</th>
+          <th style="padding:10px 14px;text-align:center;">Błędy</th>
+        </tr>
+      </thead>
+      <tbody>{summary_rows}</tbody>
+    </table>
+    <p style="margin:4px 0 24px;font-size:11px;color:#888;">
+      Stan = aktualna liczba ogłoszeń &nbsp;|&nbsp; Nowe = przybyło w tygodniu &nbsp;|&nbsp;
+      Usun. = usunięto &nbsp;|&nbsp; Netto = zmiana netto &nbsp;|&nbsp; Błędy = dni z błędem odczytu
+    </p>
+
+    <!-- ANALIZA AI -->
+    <h2 style="margin:0 0 12px;font-size:15px;color:#2c5f8a;text-transform:uppercase;
+               letter-spacing:.5px;border-bottom:2px solid #2c5f8a;padding-bottom:8px;">
+      🤖 Analiza
+    </h2>
+    <div style="background:#f0f4f8;border-left:4px solid #2c5f8a;padding:16px 20px;
+                border-radius:0 6px 6px 0;margin-bottom:28px;font-size:14px;
+                line-height:1.7;color:#333;">
+      {analysis.replace(chr(10), '<br>')}
+    </div>
+
+    <!-- ZESTAWIENIE DZIENNE -->
+    <h2 style="margin:0 0 16px;font-size:15px;color:#2c5f8a;text-transform:uppercase;
+               letter-spacing:.5px;border-bottom:2px solid #2c5f8a;padding-bottom:8px;">
+      📅 Zestawienie dzienne
+    </h2>
+    {daily_sections}
+
+  </div>
+
+  <!-- STOPKA -->
+  <div style="background:#f0f4f8;padding:16px 32px;text-align:center;
+              font-size:11px;color:#888;border-top:1px solid #e0e8f0;">
+    Raport wygenerowany automatycznie przez OLX Monitor &nbsp;·&nbsp;
+    GitHub Actions &nbsp;·&nbsp; {datetime.now().strftime("%Y-%m-%d %H:%M")}
+  </div>
+
+</div>
+</body>
+</html>"""
 
 
 # ─── ANALIZA AI (Claude API) ──────────────────────────────────────────────────
@@ -192,44 +290,10 @@ Pisz naturalnie, bez wypunktowań, jako spójny tekst analityczny."""
         return f"⚠  Błąd generowania analizy AI: {e}"
 
 
-# ─── BUDOWANIE E-MAILA ───────────────────────────────────────────────────────
-
-def build_email_body(summary: dict, weekly_data: dict, analysis: str) -> str:
-    today      = datetime.now().strftime("%d.%m.%Y")
-    week_start = (datetime.now() - timedelta(days=6)).strftime("%d.%m.%Y")
-    table      = build_text_table(summary)
-    breakdown  = build_daily_breakdown(weekly_data)
-
-    return f"""OLX MONITOR – TYGODNIOWY RAPORT
-Okres: {week_start} – {today}
-{"═" * 55}
-
-📊 PODSUMOWANIE TYGODNIA
-{table}
-
-Kolumny: Stan = aktualna liczba ogłoszeń | Nowe = przybyło w tygodniu
-         Usun. = usunięto | Netto = zmiana netto | Błędy = dni z błędem odczytu
-
-{"═" * 55}
-
-🤖 ANALIZA
-{analysis}
-
-{"═" * 55}
-
-📅 ZESTAWIENIE DZIENNE
-{breakdown}
-
-{"═" * 55}
-Raport wygenerowany automatycznie przez OLX Monitor
-GitHub Actions | {datetime.now().strftime("%Y-%m-%d %H:%M")}
-"""
-
-
 # ─── WYSYŁANIE E-MAILA ───────────────────────────────────────────────────────
 
-def send_email(subject: str, body: str):
-    """Wysyła e-mail przez Gmail SMTP używając App Password ze zmiennych środowiskowych."""
+def send_email(subject: str, html_body: str):
+    """Wysyła e-mail HTML przez Gmail SMTP."""
     gmail_password = os.environ.get("GMAIL_APP_PASSWORD", "")
     if not gmail_password:
         print("⚠  Brak GMAIL_APP_PASSWORD – e-mail nie zostanie wysłany.")
@@ -239,11 +303,13 @@ def send_email(subject: str, body: str):
     msg["Subject"] = subject
     msg["From"]    = SENDER_EMAIL
     msg["To"]      = RECIPIENT_EMAIL
-    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    # Część HTML
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     # Załącz plik Excel jeśli istnieje
     if os.path.exists(EXCEL_FILE):
-        today      = datetime.now().strftime("%Y-%m-%d")
+        today           = datetime.now().strftime("%Y-%m-%d")
         attachment_name = f"OLX_Monitor_{today}.xlsx"
         with open(EXCEL_FILE, "rb") as f:
             part = MIMEBase("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet")
@@ -281,13 +347,10 @@ def send_weekly_report():
 
     today   = datetime.now().strftime("%d.%m.%Y")
     subject = f"📊 OLX Monitor – raport tygodniowy {today}"
-    body    = build_email_body(summary, weekly_data, analysis)
+    html    = build_html_email(summary, weekly_data, analysis)
 
-    print("\n" + "─" * 55)
-    print(body[:500] + "...")   # podgląd w logach
-    print("─" * 55)
-
-    send_email(subject, body)
+    print("  ✉  Treść HTML wygenerowana, wysyłam...")
+    send_email(subject, html)
 
 
 if __name__ == "__main__":
