@@ -1,5 +1,5 @@
 {
-  "date": "2026-02-15 20:58",
+  "date": "2026-02-15 21:16",
   "results": {
     "wszystkie-lublin": {
       "new": 0,
@@ -14,13 +14,13 @@
       "status": "OK"
     },
     "poqui": {
-      "new": 5,
+      "new": 0,
       "deleted": 0,
       "total": 5,
       "status": "OK"
     },
     "stylowepokoje": {
-      "new": 2,
+      "new": 0,
       "deleted": 0,
       "total": 2,
       "status": "OK"
