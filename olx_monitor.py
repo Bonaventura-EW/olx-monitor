@@ -1,350 +1,201 @@
-import requests
+#!/usr/bin/env python3
+"""
+OLX Monitor — monitoring ogłoszeń z datą publikacji, wiekiem i historią cen.
+
+Generuje:
+  olx_monitoring.xlsx     — pełna tabela z każdym skanem
+  price_history.json      — historia cen dla dashboardu HTML
+
+Kolumny Excela:
+  Data skanu | Profil | Tytuł | Cena (zł) | Data publikacji | Dni od publikacji | URL | ID
+"""
+
+import requests, re, json, os, time
 from bs4 import BeautifulSoup
-import openpyxl
+from datetime import datetime
+from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
-from datetime import datetime, date
-import os
-import re
-import time
-import json
 
-# Opcjonalna synchronizacja z Google Sheets
-ENABLE_SHEETS_SYNC = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "") != ""
-
-# ─── KONFIGURACJA ────────────────────────────────────────────────────────────
-
-PROFILES = [
-    {
-        "name": "wszystkie-lublin",
-        "url": "https://www.olx.pl/nieruchomosci/stancje-pokoje/lublin/",
-        "type": "category"
-    },
-    {
-        "name": "artymiuk",
-        "url": "https://www.olx.pl/oferty/uzytkownik/BAm3j/",
-        "type": "user"
-    },
-    {
-        "name": "poqui",
-        "url": "https://www.olx.pl/oferty/uzytkownik/p8eWV/",
-        "type": "user"
-    },
-    {
-        "name": "stylowepokoje",
-        "url": "https://www.olx.pl/oferty/uzytkownik/3cxbz/",
-        "type": "user"
-    },
-    {
-        "name": "villahome",
-        "url": "https://www.olx.pl/oferty/uzytkownik/1n7fOJ/",
-        "type": "user"
-    },
-]
-
-EXCEL_FILE = "data/olx_monitoring.xlsx"
+CONFIG_FILE        = "config.json"
+EXCEL_FILE         = "olx_monitoring.xlsx"
+PRICE_HISTORY_FILE = "price_history.json"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept-Language": "pl-PL,pl;q=0.9,en-US;q=0.8",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Accept-Language": "pl-PL,pl;q=0.9",
+    "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
-# ─── KOLORY ──────────────────────────────────────────────────────────────────
-
-COLOR_HEADER_BG   = "2C5F8A"   # ciemny niebieski – nagłówki
-COLOR_HEADER_FONT = "FFFFFF"   # biały
-COLOR_NEW_BG      = "C6EFCE"   # zielony – nowe ogłoszenia
-COLOR_DEL_BG      = "FFC7CE"   # czerwony – usunięte
-COLOR_DATE_BG     = "D9E1F2"   # jasny niebieski – wiersz daty
-COLOR_ODD_ROW     = "F2F7FB"   # bardzo jasny niebieski – naprzemienne wiersze
-COLOR_SUMMARY_BG  = "FFF2CC"   # żółty – zakładka PODSUMOWANIE
-
-# ─── SCRAPING ────────────────────────────────────────────────────────────────
-
-def get_ad_count(url: str) -> int | None:
-    """Pobiera liczbę ogłoszeń z podanego URL."""
+def parse_created(html):
+    idx = html.find("createdTime")
+    if idx < 0:
+        return None, None
+    snippet = html[idx:idx + 80]
+    m = re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2})", snippet)
+    if not m:
+        return None, None
+    dt_str = m.group(1)
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.content, "html.parser")
+        dt  = datetime.fromisoformat(dt_str)
+        now = datetime.now(tz=dt.tzinfo)
+        days = max(0, (now - dt).days)
+        return dt.strftime("%d.%m.%Y"), days
+    except Exception:
+        return None, None
 
-        # Metoda 1: atrybut data-testid="total-count"
-        el = soup.find(attrs={"data-testid": "total-count"})
-        if el:
-            digits = re.sub(r"\D", "", el.get_text())
-            if digits:
-                return int(digits)
+def today_label():
+    months = ["sty","lut","mar","kwi","maj","cze","lip","sie","wrz","paź","lis","gru"]
+    n = datetime.now()
+    return f"{n.day} {months[n.month - 1]}"
 
-        # Metoda 2: zlicz karty ogłoszeń
-        cards = soup.find_all("div", {"data-cy": "l-card"})
-        if cards:
-            return len(cards)
-
-        # Metoda 3: regex w h1
-        h1 = soup.find("h1")
-        if h1:
-            m = re.search(r"(\d[\d\s]*)\s*ogłoszeń", h1.get_text())
-            if m:
-                return int(re.sub(r"\D", "", m.group(1)))
-
-        # Metoda 4: meta description
-        meta = soup.find("meta", {"name": "description"})
-        if meta:
-            m = re.search(r"(\d+)\s*ogłoszeń", meta.get("content", ""))
-            if m:
-                return int(m.group(1))
-
-        return 0
-
-    except Exception as e:
-        print(f"  ⚠  Błąd przy {url}: {e}")
-        return None
-
-
-def get_individual_ads(url: str) -> list[dict]:
-    """
-    Pobiera listę ogłoszeń (id + tytuł) ze strony profilu użytkownika.
-    Używana do śledzenia konkretnych ogłoszeń (nowe / usunięte).
-    """
-    ads = []
+def scrape_profile(profile_name, profile_url):
+    print(f"  [{profile_name}] {profile_url}")
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.content, "html.parser")
-
-        for card in soup.find_all("div", {"data-cy": "l-card"}):
-            link = card.find("a", href=True)
-            if not link:
-                continue
-            href = link["href"]
-            # wyciągnij ID ogłoszenia z URL-a
-            m = re.search(r"ID(\w+)\.html", href)
-            ad_id = m.group(1) if m else href.split("/")[-1]
-            title_el = card.find(["h3", "h4", "h6"])
-            title = title_el.get_text(strip=True) if title_el else "Brak tytułu"
-            ads.append({"id": ad_id, "title": title, "url": href})
-
+        r = requests.get(profile_url, headers=HEADERS, timeout=15)
+        r.raise_for_status()
     except Exception as e:
-        print(f"  ⚠  Błąd przy pobieraniu ogłoszeń z {url}: {e}")
+        print(f"    ⚠ Błąd pobierania profilu: {e}")
+        return []
+    soup = BeautifulSoup(r.text, "html.parser")
+    listings, seen = [], set()
+    for a in soup.find_all("a", href=lambda h: h and "/d/oferta/" in h):
+        parent = a.parent
+        if not parent:
+            continue
+        if "css-1pktvhb" not in " ".join(parent.get("class", [])):
+            continue
+        href = re.sub(r"\?.*", "", a.get("href", ""))
+        if href in seen:
+            continue
+        seen.add(href)
+        title = a.get_text(strip=True)
+        if not title or len(title) < 5:
+            continue
+        card_text = parent.get_text(" ", strip=True)
+        price_m   = re.search(r"([\d\s]{2,8})zł", card_text)
+        price     = int(re.sub(r"[^\d]", "", price_m.group(1))) if price_m and re.sub(r"[^\d]", "", price_m.group(1)) else 0
+        full_url  = ("https://www.olx.pl" + href) if href.startswith("/") else href
+        id_m      = re.search(r"/d/oferta/([^/?]+)", href)
+        listing_id = id_m.group(1) if id_m else href.replace("/", "_")
+        listings.append({"id": listing_id, "profile": profile_name, "title": title, "price": price, "url": full_url, "created": None, "days_old": None})
+    print(f"    → {len(listings)} ogłoszeń")
+    return listings
 
-    return ads
+def fetch_dates(listings, delay=1.2):
+    print(f"\n  Pobieranie dat publikacji ({len(listings)} ogłoszeń, ~{len(listings)*delay:.0f}s)...")
+    for i, l in enumerate(listings, 1):
+        try:
+            r = requests.get(l["url"], headers=HEADERS, timeout=12)
+            created, days = parse_created(r.text)
+            l["created"]  = created
+            l["days_old"] = days
+            status = f"{created}  ({days} dni)" if created else "brak daty"
+        except Exception as e:
+            l["created"]  = None
+            l["days_old"] = None
+            status = f"błąd: {e}"
+        print(f"    [{i:2}/{len(listings)}] {l['title'][:50]:<50} {status}")
+        time.sleep(delay)
+    return listings
 
+def update_price_history(listings):
+    today = today_label()
+    history = {}
+    if os.path.exists(PRICE_HISTORY_FILE):
+        try:
+            with open(PRICE_HISTORY_FILE, "r", encoding="utf-8") as f:
+                history = json.load(f)
+        except Exception:
+            pass
+    for l in listings:
+        lid = l["id"]
+        if lid not in history:
+            history[lid] = {"title": l["title"], "profile": l["profile"], "created": l["created"] or "", "prices": []}
+        else:
+            if not history[lid].get("created") and l.get("created"):
+                history[lid]["created"] = l["created"]
+        prices = history[lid]["prices"]
+        entry  = next((e for e in prices if e["date"] == today), None)
+        if entry:
+            entry["price"] = l["price"]
+        elif l["price"] > 0:
+            prices.append({"date": today, "price": l["price"]})
+    with open(PRICE_HISTORY_FILE, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+    print(f"  → {PRICE_HISTORY_FILE}: {len(history)} ogłoszeń")
 
-# ─── EXCEL: POMOCNICZE ───────────────────────────────────────────────────────
+COLUMNS = [
+    ("Data skanu", 20), ("Profil", 16), ("Tytuł", 54), ("Cena (zł)", 12),
+    ("Data publikacji", 16), ("Dni od publikacji", 18), ("URL", 60), ("ID ogłoszenia", 44),
+]
 
-def thin_border() -> Border:
-    s = Side(style="thin", color="CCCCCC")
-    return Border(left=s, right=s, top=s, bottom=s)
-
-
-def header_cell(ws, row: int, col: int, value: str, width: int | None = None):
-    c = ws.cell(row=row, column=col, value=value)
-    c.font      = Font(bold=True, color=COLOR_HEADER_FONT, name="Arial", size=10)
-    c.fill      = PatternFill("solid", start_color=COLOR_HEADER_BG)
-    c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    c.border    = thin_border()
-    if width:
-        ws.column_dimensions[get_column_letter(col)].width = width
-
-
-def data_cell(ws, row: int, col: int, value, bg: str | None = None,
-              bold: bool = False, align: str = "center"):
-    c = ws.cell(row=row, column=col, value=value)
-    c.font      = Font(bold=bold, name="Arial", size=10)
-    c.alignment = Alignment(horizontal=align, vertical="center", wrap_text=True)
-    c.border    = thin_border()
-    if bg:
-        c.fill = PatternFill("solid", start_color=bg)
-    return c
-
-
-# ─── EXCEL: INICJALIZACJA / ŁADOWANIE ────────────────────────────────────────
-
-def load_or_create_workbook() -> openpyxl.Workbook:
+def save_to_excel(listings):
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    thin = Side(style="thin", color="2a2a38")
+    border = Border(bottom=thin)
     if os.path.exists(EXCEL_FILE):
-        return openpyxl.load_workbook(EXCEL_FILE)
-    wb = openpyxl.Workbook()
-    wb.remove(wb.active)         # usuń domyślny pusty arkusz
-    _create_summary_sheet(wb)
-    for p in PROFILES:
-        _create_profile_sheet(wb, p["name"])
-    return wb
-
-
-def _create_summary_sheet(wb: openpyxl.Workbook):
-    ws = wb.create_sheet("PODSUMOWANIE", 0)
-    ws.sheet_properties.tabColor = "2C5F8A"
-    ws.row_dimensions[1].height = 30
-
-    cols = ["Profil", "Data ostatniego sprawdzenia", "Liczba ogłoszeń",
-            "Nowe (+)", "Usunięte (−)", "Status"]
-    widths = [22, 26, 20, 12, 14, 14]
-    for i, (col, w) in enumerate(zip(cols, widths), 1):
-        header_cell(ws, 1, i, col, w)
-
-    for i, p in enumerate(PROFILES, 2):
-        ws.cell(row=i, column=1, value=p["name"])
-        ws.row_dimensions[i].height = 18
-
-    ws.freeze_panes = "A2"
-
-
-def _create_profile_sheet(wb: openpyxl.Workbook, name: str):
-    ws = wb.create_sheet(name)
-    ws.row_dimensions[1].height = 30
-
-    cols = ["Data", "Łączna liczba ogłoszeń", "Nowe ogłoszenia (+)",
-            "Usunięte ogłoszenia (−)", "Zmiana netto", "Szczegóły nowych",
-            "Szczegóły usuniętych", "Status"]
-    widths = [20, 24, 20, 22, 14, 40, 40, 14]
-    for i, (col, w) in enumerate(zip(cols, widths), 1):
-        header_cell(ws, 1, i, col, w)
-
-    ws.freeze_panes = "A2"
-
-
-# ─── EXCEL: ZAPIS DANYCH ─────────────────────────────────────────────────────
-
-def _get_previous_data(ws) -> dict:
-    """Zwraca dane z ostatniego wiersza arkusza profilu."""
-    max_row = ws.max_row
-    if max_row < 2:
-        return {"count": None, "ads": []}
-
-    # Szukamy ostatniego wiersza z danymi (od końca)
-    for r in range(max_row, 1, -1):
-        val = ws.cell(row=r, column=2).value
-        if val is not None:
-            prev_count = int(val) if str(val).isdigit() else None
-            # Odczytujemy zapisane ID ogłoszeń z kolumny 9 (ukryta)
-            raw = ws.cell(row=r, column=9).value or ""
-            prev_ids = set(raw.split("|")) if raw else set()
-            return {"count": prev_count, "ids": prev_ids, "row": r}
-
-    return {"count": None, "ids": set(), "row": 1}
-
-
-def update_profile_sheet(ws, profile: dict, today_str: str,
-                          total: int | None, today_ads: list[dict]):
-    prev = _get_previous_data(ws)
-    prev_count = prev.get("count")
-    prev_ids   = prev.get("ids", set())
-
-    today_ids  = {a["id"] for a in today_ads}
-    new_ids    = today_ids - prev_ids
-    del_ids    = prev_ids - today_ids
-
-    # Nowe ogłoszenia
-    new_ads = [a for a in today_ads if a["id"] in new_ids]
-    new_count = len(new_ads) if today_ids else (
-        max(0, (total or 0) - (prev_count or 0)) if prev_count is not None else 0
-    )
-
-    # Usunięte
-    del_count = len(del_ids)
-
-    net_change = (total or 0) - (prev_count or 0) if prev_count is not None else 0
-
-    new_row = ws.max_row + 1
-    row_bg = COLOR_ODD_ROW if new_row % 2 == 0 else None
-
-    status = "OK" if total is not None else "BŁĄD"
-
-    def bg(special=None):
-        return special or row_bg
-
-    data_cell(ws, new_row, 1, today_str,  bg=COLOR_DATE_BG, bold=True)
-    data_cell(ws, new_row, 2, total,       bg=bg())
-    data_cell(ws, new_row, 3, new_count,   bg=bg(COLOR_NEW_BG if new_count > 0 else None), bold=(new_count > 0))
-    data_cell(ws, new_row, 4, del_count,   bg=bg(COLOR_DEL_BG if del_count > 0 else None), bold=(del_count > 0))
-    data_cell(ws, new_row, 5, net_change,  bg=bg(), bold=True)
-
-    new_details = "; ".join([f"{a['title'][:50]}" for a in new_ads[:10]]) or "—"
-    del_details = "; ".join(list(del_ids)[:10]) or "—"
-
-    data_cell(ws, new_row, 6, new_details, bg=bg(COLOR_NEW_BG if new_count > 0 else None), align="left")
-    data_cell(ws, new_row, 7, del_details, bg=bg(COLOR_DEL_BG if del_count > 0 else None), align="left")
-    data_cell(ws, new_row, 8, status,      bg=bg("C6EFCE" if status == "OK" else "FFC7CE"))
-
-    # Kolumna 9 – ukryta, przechowuje ID ogłoszeń do porównania następnego dnia
-    ws.cell(row=new_row, column=9, value="|".join(today_ids))
-    ws.column_dimensions["I"].hidden = True
-    ws.row_dimensions[new_row].height = 18
-
-    return {"new": new_count, "deleted": del_count, "total": total, "status": status}
-
-
-def update_summary_sheet(wb: openpyxl.Workbook, today_str: str, results: dict):
-    ws = wb["PODSUMOWANIE"]
-    for i, p in enumerate(PROFILES, 2):
-        r = results.get(p["name"], {})
-        status_bg = "C6EFCE" if r.get("status") == "OK" else "FFC7CE"
-        data_cell(ws, i, 1, p["name"],         bold=True,  align="left")
-        data_cell(ws, i, 2, today_str)
-        data_cell(ws, i, 3, r.get("total"))
-        data_cell(ws, i, 4, r.get("new"),      bg="C6EFCE" if (r.get("new") or 0) > 0 else None, bold=True)
-        data_cell(ws, i, 5, r.get("deleted"),  bg="FFC7CE" if (r.get("deleted") or 0) > 0 else None, bold=True)
-        data_cell(ws, i, 6, r.get("status"),   bg=status_bg)
-
-
-# ─── GŁÓWNA LOGIKA ───────────────────────────────────────────────────────────
-
-def run():
-    today_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-    print(f"\n{'='*55}")
-    print(f"  OLX Monitor  |  {today_str}")
-    print(f"{'='*55}")
-
-    os.makedirs("data", exist_ok=True)
-    wb = load_or_create_workbook()
-    results  = {}
-    all_ads  = {}   # przechowuje listę ogłoszeń dla Sheets sync
-
-    for profile in PROFILES:
-        name = profile["name"]
-        url  = profile["url"]
-        print(f"\n▶  {name}")
-        print(f"   URL: {url}")
-
-        total     = get_ad_count(url)
-        today_ads = []
-
-        if profile["type"] == "user":
-            today_ads = get_individual_ads(url)
-            print(f"   Ogłoszeń (scraping listy): {len(today_ads)}")
-            if total is None:
-                total = len(today_ads)
-
-        print(f"   Łącznie: {total}")
-        time.sleep(2)
-
-        if name not in wb.sheetnames:
-            _create_profile_sheet(wb, name)
-
-        ws = wb[name]
-        r  = update_profile_sheet(ws, profile, today_str, total, today_ads)
-        results[name]  = r
-        all_ads[name]  = today_ads
-        print(f"   ✅  Nowe: +{r['new']}  |  Usunięte: -{r['deleted']}  |  Status: {r['status']}")
-
-    update_summary_sheet(wb, today_str, results)
-    wb.save(EXCEL_FILE)
-    print(f"\n✔  Dane zapisane → {EXCEL_FILE}")
-
-    # Synchronizacja z Google Sheets (jeśli skonfigurowana)
-    if ENABLE_SHEETS_SYNC:
-        from sheets_sync import sync_to_sheets
-        sync_to_sheets(today_str, results, all_ads)
+        wb = load_workbook(EXCEL_FILE)
+        ws = wb.active
     else:
-        print("\n☁️  Google Sheets sync pominięty (brak GOOGLE_SERVICE_ACCOUNT_JSON)")
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Historia"
+        ws.append([col for col, _ in COLUMNS])
+        hfill  = PatternFill("solid", fgColor="1a1a2e")
+        hfont  = Font(color="e8ff47", bold=True, size=10)
+        halign = Alignment(horizontal="center", vertical="center", wrap_text=False)
+        for col_idx, cell in enumerate(ws[1], 1):
+            cell.fill = hfill
+            cell.font = hfont
+            cell.alignment = halign
+            cell.border = border
+            ws.column_dimensions[get_column_letter(col_idx)].width = COLUMNS[col_idx-1][1]
+        ws.freeze_panes = "A2"
+        ws.row_dimensions[1].height = 20
+    for l in listings:
+        days = l.get("days_old")
+        ws.append([now, l["profile"], l["title"], l["price"], l["created"] or "", days if days is not None else "", l["url"], l["id"]])
+        row = ws.max_row
+        ws.cell(row, 1).alignment = Alignment(horizontal="left")
+        ws.cell(row, 3).alignment = Alignment(horizontal="left")
+        ws.cell(row, 4).alignment = Alignment(horizontal="center")
+        ws.cell(row, 5).alignment = Alignment(horizontal="center")
+        ws.cell(row, 6).alignment = Alignment(horizontal="center")
+        if days is not None:
+            cell = ws.cell(row, 6)
+            if days <= 3:    cell.font = Font(color="47ffa0", bold=True, size=10)
+            elif days <= 14: cell.font = Font(color="e8ff47", bold=False, size=10)
+            elif days > 60:  cell.font = Font(color="ff6b6b", bold=False, size=10)
+    wb.save(EXCEL_FILE)
+    print(f"  → {EXCEL_FILE}: +{len(listings)} wierszy (łącznie {ws.max_row - 1})")
 
-    # Log JSON dla GitHub Actions summary
-    log = {"date": today_str, "results": results}
-    with open("data/last_run.json", "w", encoding="utf-8") as f:
-        json.dump(log, f, ensure_ascii=False, indent=2)
-
+def main():
+    print("=" * 60)
+    print(f"OLX Monitor — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    print("=" * 60)
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        config = json.load(f)
+    print("\n[1/3] Scraping profili OLX...")
+    all_listings = []
+    for p in config.get("profiles", []):
+        all_listings.extend(scrape_profile(p["name"], p["url"]))
+    if not all_listings:
+        print("⚠ Brak ogłoszeń. Koniec.")
+        return
+    print(f"\nRazem: {len(all_listings)} ogłoszeń")
+    print("\n[2/3] Pobieranie dat publikacji z OLX...")
+    all_listings = fetch_dates(all_listings, delay=1.2)
+    print("\n[3/3] Zapisywanie...")
+    update_price_history(all_listings)
+    save_to_excel(all_listings)
+    with_date = [l for l in all_listings if l["created"]]
+    no_date   = [l for l in all_listings if not l["created"]]
+    print(f"\n✓ Gotowe!")
+    print(f"  Daty publikacji znalezione: {len(with_date)}/{len(all_listings)}")
+    if no_date:
+        print(f"  Bez daty: {[l['title'][:40] for l in no_date]}")
+    print("=" * 60)
 
 if __name__ == "__main__":
-    run()
+    main()
