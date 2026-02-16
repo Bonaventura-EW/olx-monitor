@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OLX Monitor – Lublin</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;600;700&display=swap');
+  :root {
+    --bg:#0e0e12;--surface:#16161e;--surface2:#1c1c26;--border:#2a2a38;
+    --accent:#e8ff47;--accent2:#47c8ff;--text:#e8e8f0;--muted:#666688;
+    --new:#47ffa0;--gone:#ff6b6b;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;min-height:100vh;padding:24px;}
+  body::before{content:'';position:fixed;inset:0;
+    background-image:repeating-linear-gradient(0deg,transparent,transparent 39px,#ffffff03 39px,#ffffff03 40px),
+    repeating-linear-gradient(90deg,transparent,transparent 39px,#ffffff03 39px,#ffffff03 40px);
+    pointer-events:none;z-index:0;}
+  .wrap{position:relative;z-index:1;max-width:1120px;margin:0 auto;}
+
+  header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;animation:fadeDown .4s ease both;}
+  .logo{font-size:11px;letter-spacing:.25em;text-transform:uppercase;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:5px;}
+  h1{font-size:26px;font-weight:700;line-height:1.1;}
+  h1 span{color:var(--accent);}
+  .header-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px;}
+  .pulse-dot{width:8px;height:8px;background:var(--new);border-radius:50%;box-shadow:0 0 12px var(--new);animation:pulse 2s ease-in-out infinite;}
+  .live-label{font-size:10px;font-family:'DM Mono',monospace;color:var(--new);letter-spacing:.1em;}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+
+  .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;animation:fadeUp .4s .05s ease both;}
+  .stat{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;transition:border-color .2s;}
+  .stat:hover{border-color:#444460;}
+  .stat-label{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:6px;}
+  .stat-value{font-size:28px;font-weight:700;line-height:1;}
+  .stat-value.blue{color:var(--accent2)}.stat-value.green{color:var(--new)}.stat-value.yellow{color:var(--accent)}.stat-value.red{color:var(--gone)}
+  .stat-sub{font-size:10px;color:#444460;margin-top:3px;font-family:'DM Mono',monospace;}
+
+  .section-label{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:10px;display:flex;align-items:center;gap:10px;}
+  .section-label::after{content:'';flex:1;height:1px;background:var(--border);}
+
+  /* PROFILES */
+  .profiles-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;animation:fadeUp .4s .1s ease both;}
+  .profile-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden;}
+  .profile-card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));transform:scaleX(0);transform-origin:left;transition:transform .3s;}
+  .profile-card:hover{border-color:#3a3a52;transform:translateY(-2px);box-shadow:0 8px 24px #00000060;}
+  .profile-card.active{border-color:var(--accent);background:#1a1a22;}
+  .profile-card.active::after{transform:scaleX(1);}
+  .profile-name{font-size:11px;font-weight:600;font-family:'DM Mono',monospace;color:var(--accent);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}
+  .profile-count{font-size:24px;font-weight:700;margin-bottom:6px;line-height:1;}
+  .profile-deltas{display:flex;gap:8px;font-size:11px;font-family:'DM Mono',monospace;margin-bottom:10px;}
+  .delta-new{color:var(--new)}.delta-gone{color:var(--gone)}
+  .profile-bar-bg{height:3px;background:var(--border);border-radius:2px;overflow:hidden;}
+  .profile-bar-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .8s cubic-bezier(.4,0,.2,1);}
+  .profile-olx-link{font-size:9px;font-family:'DM Mono',monospace;color:#333350;margin-top:8px;display:block;text-decoration:none;transition:color .15s;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .profile-olx-link:hover{color:var(--accent2);}
+  .empty-profile{opacity:.6}
+  .empty-profile:hover{border-color:#3a2a2a!important}
+  .empty-profile.active{border-color:var(--gone)!important}
+  .empty-profile.active::after{background:linear-gradient(90deg,var(--gone),#ff6b6b80)!important}
+
+  /* PRICE DISTRIBUTION */
+  .price-section{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;margin-bottom:20px;animation:fadeUp .4s .15s ease both;}
+  .price-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;}
+  .price-title{font-size:12px;font-weight:600;}
+  .price-stats{display:flex;gap:16px;}
+  .price-stat-item{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);}
+  .price-stat-item span{color:var(--accent);}
+  .price-buckets{display:flex;gap:6px;align-items:flex-end;height:64px;}
+  .bucket{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;}
+  .bucket-bar{width:100%;background:var(--accent);border-radius:3px 3px 0 0;min-height:3px;transition:height .6s cubic-bezier(.4,0,.2,1);opacity:.8;}
+  .bucket-bar:hover{opacity:1;}
+  .bucket-label{font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;}
+  .bucket-count{font-size:10px;font-family:'DM Mono',monospace;color:var(--accent);}
+
+  .main-area{animation:fadeUp .4s .2s ease both;}
+
+  /* LISTINGS PANEL */
+  .listings-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  .panel-header{display:flex;justify-content:space-between;align-items:center;padding:12px 18px;border-bottom:1px solid var(--border);gap:10px;flex-wrap:wrap;}
+  .panel-title{font-size:13px;font-weight:600;}
+  .panel-controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .search-box{background:var(--bg);border:1px solid var(--border);border-radius:20px;padding:4px 12px;color:var(--text);font-family:'DM Mono',monospace;font-size:11px;outline:none;width:160px;transition:border-color .2s;}
+  .search-box:focus{border-color:var(--accent);}
+  .search-box::placeholder{color:#333350;}
+  .filter-tabs{display:flex;gap:4px;flex-wrap:wrap;}
+  .tab{font-size:10px;font-family:'DM Mono',monospace;padding:3px 10px;border-radius:20px;border:1px solid transparent;cursor:pointer;transition:all .15s;color:var(--muted);background:none;}
+  .tab.active{background:var(--accent);color:var(--bg);font-weight:600;border-color:var(--accent);}
+  .tab.tab-new.active{background:var(--new);border-color:var(--new);}
+  .tab:hover:not(.active){border-color:var(--border);color:var(--text);}
+
+  /* LISTING ROW — 6 kolumn: dot | title | sparkline+delta | price | age | date-added */
+  .listing-row{
+    display:grid;
+    grid-template-columns:8px 1fr auto auto auto auto;
+    align-items:center;
+    padding:10px 18px;
+    border-bottom:1px solid #1a1a24;
+    gap:10px;
+    cursor:pointer;
+    transition:background .15s;
+    text-decoration:none;color:inherit;
+  }
+  .listing-row:last-child{border-bottom:none;}
+  .listing-row:hover{background:#1c1c28;}
+  .listing-row:hover .listing-title{color:var(--accent2);}
+
+  .listing-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+  .listing-dot.new{background:var(--new);box-shadow:0 0 6px var(--new);}
+  .listing-dot.gone{background:var(--gone);}
+  .listing-dot.existing{background:#2a2a44;}
+
+  .listing-title{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s;text-decoration:none;color:inherit;cursor:pointer;}
+
+  /* Inline price change */
+  .price-change{display:flex;align-items:center;gap:5px;white-space:nowrap;}
+  .price-delta{font-size:10px;font-family:'DM Mono',monospace;font-weight:600;padding:2px 7px;border-radius:4px;white-space:nowrap;}
+  .price-delta.drop{color:var(--new);background:#47ffa012;border:1px solid #47ffa030;}
+  .price-delta.rise{color:var(--gone);background:#ff6b6b12;border:1px solid #ff6b6b30;}
+  .price-delta.stable{color:var(--muted);background:#66668810;border:1px solid #66668820;}
+  .price-delta.nodata{color:#2a2a44;background:none;border:1px solid #1e1e2a;}
+
+  .listing-price{font-size:12px;font-family:'DM Mono',monospace;font-weight:600;color:var(--accent);white-space:nowrap;text-align:right;}
+  .listing-price.cheap{color:var(--new);}
+
+  /* AGE BADGE — ile dni od dodania */
+  .age-badge{font-size:10px;font-family:'DM Mono',monospace;white-space:nowrap;padding:2px 7px;border-radius:4px;border:1px solid;text-align:center;}
+  .age-badge.fresh{color:var(--new);border-color:#47ffa030;background:#47ffa008;}   /* ≤3 dni */
+  .age-badge.recent{color:var(--accent);border-color:#e8ff4730;background:#e8ff4708;}  /* 4–14 dni */
+  .age-badge.old{color:var(--muted);border-color:#33335030;background:none;}         /* >14 dni */
+  .age-badge.nodate{color:#2a2a44;border-color:#1e1e2a;background:none;}
+
+  /* Date added */
+  .listing-added{font-size:10px;color:#333350;font-family:'DM Mono',monospace;white-space:nowrap;min-width:76px;text-align:right;}
+  .listing-added.fresh{color:var(--new);}
+
+  /* TABLE HEADER ROW */
+  .col-headers{
+    display:grid;
+    grid-template-columns:8px 1fr auto auto auto auto;
+    padding:6px 18px;
+    gap:10px;
+    border-bottom:2px solid var(--border);
+    font-size:9px;
+    font-family:'DM Mono',monospace;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    color:#333350;
+  }
+
+  /* EXPANDABLE PRICE HISTORY */
+  .price-history-panel{
+    display:none;background:#12121a;
+    border-top:1px solid var(--border);
+    padding:14px 18px 14px 38px;
+    animation:expandDown .2s ease both;
+  }
+  .price-history-panel.open{display:block;}
+  @keyframes expandDown{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+
+  .ph-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+  .ph-title{font-size:11px;font-weight:600;color:var(--accent2);}
+  .ph-meta{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);margin-bottom:10px;}
+  .ph-link{font-size:10px;font-family:'DM Mono',monospace;color:var(--accent2);text-decoration:none;border:1px solid #1a3040;padding:2px 10px;border-radius:20px;transition:all .15s;}
+  .ph-link:hover{background:#0a1a24;border-color:var(--accent2);}
+  .ph-chart{width:100%;height:68px;margin-bottom:10px;display:block;overflow:visible;}
+  .ph-table{width:100%;border-collapse:collapse;}
+  .ph-table td{font-size:11px;font-family:'DM Mono',monospace;padding:4px 0;border-bottom:1px solid #1a1a24;vertical-align:middle;}
+  .ph-table tr:last-child td{border-bottom:none;}
+  .td-date{color:var(--muted);width:70px;}
+  .td-price{font-weight:600;text-align:right;width:80px;}
+  .td-delta{text-align:right;width:90px;}
+  .td-bar{padding-left:12px;}
+  .bar-track{height:3px;background:var(--border);border-radius:2px;overflow:hidden;min-width:80px;}
+  .bar-fill{height:100%;border-radius:2px;transition:width .5s;}
+
+  .empty{padding:36px;text-align:center;color:#333350;font-size:12px;font-family:'DM Mono',monospace;}
+
+  /* PROFILE DETAIL */
+  .profile-detail{display:none;margin-top:20px;animation:fadeUp .3s ease both;}
+  .profile-detail.visible{display:block;}
+  .detail-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;}
+  .detail-profile-name{font-size:18px;font-weight:700;}
+  .detail-profile-name span{color:var(--accent);}
+  .detail-close{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);cursor:pointer;border:1px solid var(--border);padding:4px 12px;border-radius:20px;background:none;transition:all .15s;}
+  .detail-close:hover{border-color:var(--gone);color:var(--gone);}
+  .detail-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px;}
+  .detail-stat{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;}
+  .detail-stat-label{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:4px;}
+  .detail-stat-value{font-size:20px;font-weight:700;}
+  .detail-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;}
+  .detail-col{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  .detail-col-header{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;}
+  .detail-col-title{font-size:11px;font-weight:600;}
+  .detail-col-badge{font-size:10px;font-family:'DM Mono',monospace;padding:2px 8px;border-radius:20px;}
+  .badge-new{background:#47ffa015;color:var(--new);border:1px solid #47ffa030;}
+  .badge-gone{background:#ff6b6b15;color:var(--gone);border:1px solid #ff6b6b30;}
+  .history-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  .history-row{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid #1a1a24;}
+  .history-row:last-child{border-bottom:none;}
+  .history-date{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);min-width:80px;}
+  .history-event{font-size:12px;flex:1;}
+
+  .pagination{display:flex;justify-content:center;gap:5px;padding:12px;border-top:1px solid var(--border);}
+  .page-btn{font-size:10px;font-family:'DM Mono',monospace;padding:3px 9px;border-radius:6px;border:1px solid var(--border);background:none;color:var(--muted);cursor:pointer;transition:all .15s;}
+  .page-btn.active{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:600;}
+  .page-btn:hover:not(.active){border-color:#444460;color:var(--text);}
+
+  /* JSON LOAD BANNER */
+  .load-banner{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px;font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);}
+  .load-banner input[type=file]{display:none;}
+  .load-btn{background:var(--accent);color:var(--bg);border:none;padding:4px 14px;border-radius:20px;font-family:'DM Mono',monospace;font-size:10px;font-weight:600;cursor:pointer;transition:opacity .15s;flex-shrink:0;}
+  .load-btn:hover{opacity:.85;}
+  .load-ok{color:var(--new);}
+
+  footer{display:flex;justify-content:space-between;align-items:center;margin-top:20px;font-size:11px;font-family:'DM Mono',monospace;color:#333350;animation:fadeUp .4s .3s ease both;}
+  .olx-link{color:var(--accent2);text-decoration:none;border:1px solid #1a3040;padding:5px 14px;border-radius:20px;transition:all .2s;}
+  .olx-link:hover{border-color:var(--accent2);background:#0a1a24;}
+
+  @keyframes fadeDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:none}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div>
+    <div class="logo">OLX Monitor / Lublin / Stancje i Pokoje</div>
+    <h1>Pokoje <span>Lublin</span></h1>
+  </div>
+  <div class="header-right">
+    <div class="pulse-dot"></div>
+    <div class="live-label">LIVE</div>
+  </div>
+</header>
+
+<div class="stats-row">
+  <div class="stat"><div class="stat-label">Ogłoszenia dziś</div><div class="stat-value blue" id="statTotal">—</div><div class="stat-sub">wszystkie profile</div></div>
+  <div class="stat"><div class="stat-label">Nowe dziś</div><div class="stat-value green" id="statNew">—</div><div class="stat-sub">pojawiły się</div></div>
+  <div class="stat"><div class="stat-label">Zniknęły</div><div class="stat-value red" id="statGone">—</div><div class="stat-sub">usunięte/wynajęte</div></div>
+  <div class="stat"><div class="stat-label">Nast. skan</div><div class="stat-value yellow" id="nextScan">—</div><div class="stat-sub">jutro 09:00</div></div>
+</div>
+
+<div class="section-label">Profile OLX</div>
+<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:20px;">
+  <!-- Kafelek "Wszystkie ogłoszenia" -->
+  <div id="cardAll" onclick="toggleProfile(null)" style="
+    background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    padding:14px 16px;cursor:pointer;transition:all .2s;flex-shrink:0;width:160px;
+    position:relative;overflow:hidden;
+  ">
+    <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));transform:scaleX(0);transform-origin:left;transition:transform .3s;" id="cardAllBar"></div>
+    <div style="font-size:11px;font-weight:600;font-family:'DM Mono',monospace;color:var(--accent);margin-bottom:10px;">wszystkie</div>
+    <div style="font-size:24px;font-weight:700;margin-bottom:6px;" id="cardAllCount">—</div>
+    <div style="font-size:10px;font-family:'DM Mono',monospace;margin-bottom:10px;" id="cardAllSub"></div>
+    <!-- Wykres słupkowy: liczba ogłoszeń per profil -->
+    <div id="cardAllChart" style="display:flex;gap:3px;align-items:flex-end;height:40px;margin-top:4px;"></div>
+  </div>
+  <!-- Grid profili -->
+  <div class="profiles-grid" id="profilesGrid" style="flex:1;margin-bottom:0;"></div>
+</div>
+
+<div class="section-label">Rozkład cen (zł / mies.)</div>
+<div class="price-section">
+  <div class="price-header">
+    <div class="price-title" id="priceTitle">Wszystkie profile</div>
+    <div class="price-stats">
+      <div class="price-stat-item">śr: <span id="priceAvg">—</span> zł</div>
+      <div class="price-stat-item">min: <span id="priceMin">—</span> zł</div>
+      <div class="price-stat-item">max: <span id="priceMax">—</span> zł</div>
+    </div>
+  </div>
+  <div class="price-buckets" id="priceBuckets"></div>
+</div>
+
+<div class="load-banner">
+  <span id="loadStatus">Wczytaj <b>price_history.json</b> z monitora — zobaczysz historię cen i daty publikacji:</span>
+  <input type="file" id="jsonFileInput" accept=".json" onchange="loadJsonFile(this)">
+  <button class="load-btn" onclick="document.getElementById('jsonFileInput').click()">Wczytaj JSON</button>
+</div>
+
+<div class="section-label" id="listingsLabel">Wszystkie ogłoszenia</div>
+<div class="main-area">
+  <div id="allListingsView">
+    <div class="listings-panel">
+      <div class="panel-header">
+        <div class="panel-title" id="listingsTitle">Ogłoszenia</div>
+        <div class="panel-controls">
+          <input class="search-box" id="searchBox" placeholder="Szukaj..." oninput="applyFilters()">
+          <div class="filter-tabs">
+            <button class="tab active" onclick="setFilter('all',this)">Wszystkie</button>
+            <button class="tab tab-new" onclick="setFilter('new',this)">Nowe</button>
+            <button class="tab" onclick="setFilter('cheap',this)">&lt;800 zł</button>
+            <button class="tab" onclick="setFilter('dropped',this)">↓ Obniżki</button>
+            <button class="tab" onclick="setFilter('fresh',this)">🟢 Świeże ≤3 dni</button>
+          </div>
+        </div>
+      </div>
+      <div class="col-headers">
+        <div></div>
+        <div>Ogłoszenie</div>
+        <div style="text-align:right">Zmiana ceny</div>
+        <div style="text-align:right">Cena</div>
+        <div style="text-align:center">Wiek</div>
+        <div style="text-align:right">Data dodania</div>
+      </div>
+      <div id="listingsList"></div>
+      <div class="pagination" id="paginationBar"></div>
+    </div>
+  </div>
+
+  <div class="profile-detail" id="profileDetail">
+    <div class="detail-header">
+      <div class="detail-profile-name" id="detailName">—</div>
+      <button class="detail-close" onclick="closeProfile()">✕ Zamknij</button>
+    </div>
+    <div class="detail-stats">
+      <div class="detail-stat"><div class="detail-stat-label">Ogłoszenia</div><div class="detail-stat-value blue" id="dStatTotal">—</div></div>
+      <div class="detail-stat"><div class="detail-stat-label">Nowe</div><div class="detail-stat-value green" id="dStatNew">—</div></div>
+      <div class="detail-stat"><div class="detail-stat-label">Zniknęły</div><div class="detail-stat-value red" id="dStatGone">—</div></div>
+      <div class="detail-stat"><div class="detail-stat-label">Śr. cena</div><div class="detail-stat-value yellow" id="dStatAvg">—</div></div>
+    </div>
+    <div class="detail-cols">
+      <div class="detail-col">
+        <div class="detail-col-header"><div class="listing-dot new"></div><div class="detail-col-title">Nowe ogłoszenia</div><div class="detail-col-badge badge-new" id="dNewBadge">0</div></div>
+        <div id="dNewList"></div>
+      </div>
+      <div class="detail-col">
+        <div class="detail-col-header"><div class="listing-dot gone"></div><div class="detail-col-title">Zniknęły</div><div class="detail-col-badge badge-gone" id="dGoneBadge">0</div></div>
+        <div id="dGoneList"></div>
+      </div>
+    </div>
+    <div class="section-label">Historia skanów</div>
+    <div class="history-panel" id="dHistory"></div>
+    <div style="margin-top:12px;">
+      <div class="section-label">Aktywne ogłoszenia</div>
+      <div class="col-headers">
+        <div></div><div>Ogłoszenie</div>
+        <div style="text-align:right">Zmiana ceny</div>
+        <div style="text-align:right">Cena</div>
+        <div style="text-align:center">Wiek</div>
+        <div style="text-align:right">Data dodania</div>
+      </div>
+      <div class="listings-panel"><div id="dActiveList"></div></div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <span>Pobrano: 16.02.2026 • źródło: OLX.pl</span>
+  <a class="olx-link" href="https://www.olx.pl/nieruchomosci/stancje-pokoje/lublin/" target="_blank">↗ OLX Lublin</a>
+</footer>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// PRICE HISTORY — z price_history.json (nowy format)
+// Format: { "listing-id": { title, profile, created, prices: [{date,price}] } }
+// ═══════════════════════════════════════════════════════
+let PRICE_HISTORY = {};
+
+function loadJsonFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const raw = JSON.parse(e.target.result);
+      PRICE_HISTORY = raw;
+
+      // Wczytaj też daty publikacji do listings
+      enrichListingsFromHistory();
+
+      const n = Object.keys(PRICE_HISTORY).length;
+      document.getElementById('loadStatus').innerHTML =
+        `<span class="load-ok">✓ Wczytano historię ${n} ogłoszeń z pliku ${file.name}</span>`;
+
+      renderListingsList();
+      if (activeProfile) openProfileDetail(activeProfile);
+    } catch(err) {
+      alert('Błąd parsowania JSON: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+// Uzupełnij daty z history do listings
+function enrichListingsFromHistory() {
+  Object.values(PROFILES_DATA).forEach(p => {
+    p.current.forEach(l => {
+      const h = PRICE_HISTORY[l.id];
+      if (h && h.created && !l.created) {
+        l.created = h.created;   // "DD.MM.YYYY"
+        l.daysOld = computeDaysOld(h.created);
+      }
+    });
+  });
+}
+
+function computeDaysOld(ddmmyyyy) {
+  if (!ddmmyyyy) return null;
+  // Format DD.MM.YYYY
+  const parts = ddmmyyyy.split('.');
+  if (parts.length !== 3) return null;
+  const dt = new Date(+parts[2], +parts[1]-1, +parts[0]);
+  const now = new Date();
+  const diff = Math.floor((now - dt) / 86400000);
+  return diff >= 0 ? diff : null;
+}
+
+// ═══════════════════════════════════════════════════════
+// PRICE CHANGE HELPERS
+// ═══════════════════════════════════════════════════════
+function getHistoryPrices(id) {
+  const h = PRICE_HISTORY[id];
+  return h ? (h.prices || h) : null;   // obsługuje oba formaty
+}
+
+function getPriceChange(id) {
+  const pts = getHistoryPrices(id);
+  if (!pts || pts.length < 2) return null;
+  return { delta: pts[pts.length-1].price - pts[0].price, first: pts[0].price, last: pts[pts.length-1].price, points: pts };
+}
+
+function priceDeltaTag(id) {
+  const pts = getHistoryPrices(id);
+  if (!pts) return '<span class="price-delta nodata">—</span>';
+  if (pts.length < 2) return '<span class="price-delta stable">= 1 skan</span>';
+  const c = getPriceChange(id);
+  if (c.delta === 0) return '<span class="price-delta stable">= bez zmian</span>';
+  const cls = c.delta < 0 ? 'drop' : 'rise';
+  const sign = c.delta < 0 ? '↓' : '↑';
+  return `<span class="price-delta ${cls}">${sign} ${Math.abs(c.delta).toLocaleString('pl-PL')} zł</span>`;
+}
+
+function sparklineSVG(id, w=52, h=20) {
+  const c = getPriceChange(id);
+  if (!c || c.points.length < 2) {
+    return `<svg width="${w}" height="${h}"><line x1="2" y1="${h/2}" x2="${w-2}" y2="${h/2}" stroke="#222232" stroke-width="1" stroke-dasharray="2,3"/></svg>`;
+  }
+  const pts = c.points;
+  const minP = Math.min(...pts.map(p=>p.price));
+  const maxP = Math.max(...pts.map(p=>p.price));
+  const range = maxP - minP || 1;
+  const xs = pts.map((_,i) => 2 + (i/(pts.length-1))*(w-4));
+  const ys = pts.map(p => h-2 - ((p.price-minP)/range)*(h-4));
+  const poly = xs.map((x,i)=>`${x},${ys[i]}`).join(' ');
+  const area = `2,${h} ${poly} ${w-2},${h}`;
+  const col = c.delta < 0 ? '#47ffa0' : c.delta > 0 ? '#ff6b6b' : '#666688';
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    <polygon points="${area}" fill="${col}" opacity="0.12"/>
+    <polyline points="${poly}" fill="none" stroke="${col}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${xs[xs.length-1]}" cy="${ys[ys.length-1]}" r="2" fill="${col}"/>
+  </svg>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// AGE BADGE
+// ═══════════════════════════════════════════════════════
+function ageBadge(l) {
+  const days = l.daysOld;
+  if (days === null || days === undefined) {
+    return '<div class="age-badge nodate">—</div>';
+  }
+  if (days <= 3)  return `<div class="age-badge fresh">${days}d</div>`;
+  if (days <= 14) return `<div class="age-badge recent">${days}d</div>`;
+  return `<div class="age-badge old">${days}d</div>`;
+}
+
+function addedDate(l) {
+  if (!l.created) return '<div class="listing-added">—</div>';
+  const fresh = (l.daysOld !== null && l.daysOld <= 3);
+  return `<div class="listing-added ${fresh?'fresh':''}">${l.created}</div>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// FULL PRICE HISTORY PANEL (expanded)
+// ═══════════════════════════════════════════════════════
+function fullChartSVG(id) {
+  const c = getPriceChange(id);
+  if (!c || c.points.length < 2) return '';
+  const pts=c.points, W=600, H=56;
+  const minP=Math.min(...pts.map(p=>p.price));
+  const maxP=Math.max(...pts.map(p=>p.price));
+  const range=maxP-minP||1;
+  const xs=pts.map((_,i)=>8+(i/(pts.length-1))*(W-16));
+  const ys=pts.map(p=>H-4-((p.price-minP)/range)*(H-8));
+  const poly=xs.map((x,i)=>`${x},${ys[i]}`).join(' ');
+  const area=`${xs[0]},${H} ${poly} ${xs[xs.length-1]},${H}`;
+  const col=c.delta<0?'#47ffa0':c.delta>0?'#ff6b6b':'#666688';
+  const dots=xs.map((x,i)=>`<circle cx="${x}" cy="${ys[i]}" r="3" fill="${col}"/>`).join('');
+  const labels=pts.map((p,i)=>`<text x="${xs[i]}" y="${H+13}" text-anchor="middle" font-size="9" fill="#333350" font-family="'DM Mono',monospace">${p.date}</text>`).join('');
+  return `<svg class="ph-chart" viewBox="0 0 ${W} ${H+16}" preserveAspectRatio="none">
+    <polygon points="${area}" fill="${col}" opacity="0.08"/>
+    <polyline points="${poly}" fill="none" stroke="${col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    ${dots}${labels}
+  </svg>`;
+}
+
+function buildPricePanel(l) {
+  const pts = getHistoryPrices(l.id);
+  const hData = PRICE_HISTORY[l.id];
+  const createdStr = hData && hData.created ? hData.created : (l.created || '');
+  const daysOld = l.daysOld;
+
+  let metaLine = '';
+  if (createdStr) {
+    const ageStr = daysOld !== null ? ` · ${daysOld} dni temu` : '';
+    metaLine = `<div class="ph-meta">📅 Dodano: <b>${createdStr}</b>${ageStr}</div>`;
+  }
+
+  if (!pts || pts.length < 2) {
+    return `${metaLine}<div style="font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);">
+      Brak historii cen — uruchom monitor kilka razy i wczytaj price_history.json.
+    </div>`;
+  }
+
+  const c = getPriceChange(l.id);
+  const maxP = Math.max(...pts.map(p=>p.price));
+  const totalStr = c.delta===0 ? 'bez zmian'
+    : c.delta<0 ? `↓ ${Math.abs(c.delta)} zł od pierwszego skanu`
+    : `↑ ${c.delta} zł od pierwszego skanu`;
+  const totalColor = c.delta<0?'var(--new)':c.delta>0?'var(--gone)':'var(--muted)';
+
+  const rows = [...pts].reverse().map((p,i,arr) => {
+    const prev  = arr[i+1];
+    const delta = prev ? p.price - prev.price : 0;
+    const dStr  = delta===0?'<span style="color:#222232">—</span>'
+      :delta<0?`<span style="color:var(--new)">↓ ${Math.abs(delta)} zł</span>`
+      :`<span style="color:var(--gone)">↑ ${delta} zł</span>`;
+    const bw  = Math.round((p.price/maxP)*100);
+    const bc  = delta<0?'#47ffa0':delta>0?'#ff6b6b':'#2a2a44';
+    return `<tr>
+      <td class="td-date">${p.date}</td>
+      <td class="td-price" style="color:var(--accent)">${p.price.toLocaleString('pl-PL')} zł</td>
+      <td class="td-delta">${dStr}</td>
+      <td class="td-bar"><div class="bar-track"><div class="bar-fill" style="width:${bw}%;background:${bc}"></div></div></td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <div class="ph-header">
+      <div class="ph-title">Historia cen · <span style="color:${totalColor}">${totalStr}</span></div>
+      <a class="ph-link" href="${l.url}" target="_blank">↗ Otwórz ogłoszenie</a>
+    </div>
+    ${metaLine}
+    ${fullChartSVG(l.id)}
+    <table class="ph-table">${rows}</table>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// LISTING ROW
+// ═══════════════════════════════════════════════════════
+function renderRow(l, idx) {
+  return `
+    <div class="listing-row" onclick="togglePanel('${CSS.escape(l.id)}',event)" style="animation-delay:${idx*0.03}s">
+      <div class="listing-dot ${l.status}"></div>
+      <a class="listing-title" href="${l.url}" target="_blank" onclick="event.stopPropagation()" title="${l.title}">${l.title}</a>
+      <div class="price-change">${sparklineSVG(l.id)} ${priceDeltaTag(l.id)}</div>
+      <div class="listing-price ${l.price<800?'cheap':''}">${l.price.toLocaleString('pl-PL')} zł</div>
+      ${ageBadge(l)}
+      ${addedDate(l)}
+    </div>
+    <div class="price-history-panel" id="ph-${l.id.replace(/[^a-zA-Z0-9]/g,'_')}">
+      ${buildPricePanel(l)}
+    </div>`;
+}
+
+function togglePanel(id, e) {
+  if (e.target.tagName === 'A') return;
+  const safeId = id.replace(/[^a-zA-Z0-9]/g,'_');
+  const panel = document.getElementById('ph-' + safeId);
+  if (!panel) return;
+  const isOpen = panel.classList.contains('open');
+  document.querySelectorAll('.price-history-panel.open').forEach(p=>p.classList.remove('open'));
+  if (!isOpen) panel.classList.add('open');
+}
+
+// ═══════════════════════════════════════════════════════
+// PROFILES DATA — realne dane z OLX
+// ═══════════════════════════════════════════════════════
+const PROFILES_DATA = {
+  artymiuk: {
+    url:'https://www.olx.pl/oferty/uzytkownik/BAm3j/',
+    current:[], gone:[],
+    history:[{date:'16 lut 2026',total:0,newCount:0,goneCount:0}]
+  },
+  poqui: {
+    url:'https://www.olx.pl/oferty/uzytkownik/p8eWV/',
+    current:[
+      {id:'przytulny-pokoj-w-2-pietrowym-mieszkaniu-blisko-kul-umcs-up-CID3-ID17vbYq', title:'Przytulny pokój w 2-piętrowym mieszkaniu blisko KUL, UMCS, UP', price:899,  date:'dziś',       url:'https://www.olx.pl/d/oferta/przytulny-pokoj-w-2-pietrowym-mieszkaniu-blisko-kul-umcs-up-CID3-ID17vbYq.html', status:'existing', created:'18.09.2025', daysOld:151},
+      {id:'swiezo-wykonczone-mieszkanie-z-duzym-balkonem-ponikwoda-CID3-ID1951OR',     title:'Świeżo wykończone mieszkanie z dużym balkonem – Ponikwoda',     price:2299, date:'dziś',       url:'https://www.olx.pl/d/oferta/swiezo-wykonczone-mieszkanie-z-duzym-balkonem-ponikwoda-CID3-ID1951OR.html',     status:'new',      created:'14.02.2026', daysOld:2},
+      {id:'kawalerka-po-remoncie-z-funkcjonalna-antresola-ul-jana-sawy-CID3-ID183ger', title:'Kawalerka po remoncie z funkcjonalną antresolą – ul. Jana Sawy', price:2499, date:'dziś',       url:'https://www.olx.pl/d/oferta/kawalerka-po-remoncie-z-funkcjonalna-antresola-ul-jana-sawy-CID3-ID183ger.html', status:'existing', created:'07.01.2026', daysOld:40},
+      {id:'przytulny-pokoj-blisko-politechniki-ul-przytulna-CID3-ID17NeTz',            title:'Przytulny pokój blisko Politechniki – ul. Przytulna',            price:599,  date:'dziś',       url:'https://www.olx.pl/d/oferta/przytulny-pokoj-blisko-politechniki-ul-przytulna-CID3-ID17NeTz.html',            status:'existing', created:'12.11.2025', daysOld:96},
+      {id:'mieszkanie-z-klimatyzacja-5-minut-od-umcs-up-kul-dlugosza-CID3-ID18KAEc',  title:'Mieszkanie z KLIMATYZACJĄ 5 minut od UMCS, UP, KUL – Długosza', price:2049, date:'13 lut 2026', url:'https://www.olx.pl/d/oferta/mieszkanie-z-klimatyzacja-5-minut-od-umcs-up-kul-dlugosza-CID3-ID18KAEc.html', status:'existing', created:'03.01.2026', daysOld:44},
+    ],
+    gone:[{title:'Kawalerka Centrum – zdjęta z oferty',price:1700,date:'15 lut 2026',url:'#'}],
+    history:[
+      {date:'16 lut 2026',total:5,newCount:1,goneCount:0},
+      {date:'15 lut 2026',total:5,newCount:0,goneCount:1},
+      {date:'14 lut 2026',total:6,newCount:1,goneCount:0},
+      {date:'13 lut 2026',total:5,newCount:0,goneCount:1},
+      {date:'12 lut 2026',total:6,newCount:2,goneCount:0},
+    ]
+  },
+  pokojewlublinie: {
+    url:'https://www.olx.pl/oferty/uzytkownik/3cxbz/',
+    current:[
+      {id:'wolny-od-zaraz-pokoj-jedynka-ul-romanowskiego-58-CID3-ID16ZeYm',                  title:'WOLNY OD ZARAZ! Pokój jedynka, ul. Romanowskiego 58',                     price:640, date:'dziś',       url:'https://www.olx.pl/d/oferta/wolny-od-zaraz-pokoj-jedynka-ul-romanowskiego-58-CID3-ID16ZeYm.html',                  status:'existing', created:'02.11.2025', daysOld:106},
+      {id:'wolny-od-zaraz-super-lokalizacja-blisko-centrum-ul-paganiniego-12-CID3-ID195dLc', title:'WOLNY OD ZARAZ! Super lokalizacja, blisko centrum, ul. Paganiniego 12', price:640, date:'dziś',       url:'https://www.olx.pl/d/oferta/wolny-od-zaraz-super-lokalizacja-blisko-centrum-ul-paganiniego-12-CID3-ID195dLc.html', status:'existing', created:'12.02.2026', daysOld:4},
+      {id:'pokoj-w-mieszkaniu-trzypokojowym-srodmiescie-CID3-ID19cMU4',                      title:'Pokój w mieszkaniu trzypokojowym – Śródmieście',                          price:900, date:'12 lut 2026', url:'https://www.olx.pl/d/oferta/pokoj-w-mieszkaniu-trzypokojowym-srodmiescie-CID3-ID19cMU4.html',                      status:'new',      created:'16.02.2026', daysOld:0},
+    ],
+    gone:[
+      {title:'Pokój przy KUL – wynajęty',price:850,date:'15 lut 2026',url:'#'},
+      {title:'Studio Śródmieście 2pok – usunięte',price:1200,date:'14 lut 2026',url:'#'},
+    ],
+    history:[
+      {date:'16 lut 2026',total:3,newCount:1,goneCount:0},
+      {date:'15 lut 2026',total:4,newCount:0,goneCount:1},
+      {date:'14 lut 2026',total:5,newCount:1,goneCount:1},
+    ]
+  },
+  villahome: {
+    url:'https://www.olx.pl/oferty/uzytkownik/1n7fOJ/',
+    current:[], gone:[],
+    history:[{date:'16 lut 2026',total:0,newCount:0,goneCount:0}]
+  },
+  dawnypatron: {
+    url:'https://www.olx.pl/oferty/uzytkownik/uD2d4/',
+    current:[], gone:[],
+    history:[{date:'16 lut 2026',total:0,newCount:0,goneCount:0}]
+  }
+};
+
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+let activeProfile=null, activeFilter='all', currentPage=1;
+const PAGE_SIZE=15;
+let filteredListings=[];
+
+function allCurrent() { return Object.values(PROFILES_DATA).flatMap(p=>p.current); }
+
+function initStats() {
+  const all=allCurrent();
+  document.getElementById('statTotal').textContent=all.length;
+  document.getElementById('statNew').textContent='+'+all.filter(l=>l.status==='new').length;
+  document.getElementById('statGone').textContent='-'+Object.values(PROFILES_DATA).flatMap(p=>p.gone).length;
+}
+
+function setFilter(f,btn) {
+  activeFilter=f; currentPage=1;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+
+function applyFilters() {
+  const q=document.getElementById('searchBox').value.toLowerCase();
+  const src=activeProfile?PROFILES_DATA[activeProfile].current:allCurrent();
+  filteredListings=src.filter(l=>{
+    const mq=l.title.toLowerCase().includes(q);
+    const mf=activeFilter==='all'    ? true
+      :activeFilter==='new'    ? l.status==='new'
+      :activeFilter==='cheap'  ? l.price<800
+      :activeFilter==='dropped'? (getPriceChange(l.id)&&getPriceChange(l.id).delta<0)
+      :activeFilter==='fresh'  ? (l.daysOld!==null&&l.daysOld!==undefined&&l.daysOld<=3)
+      :true;
+    return mq&&mf;
+  });
+  currentPage=1; renderListingsList();
+}
+
+function renderListingsList() {
+  const el=document.getElementById('listingsList');
+  const count=filteredListings.length;
+  const suf=count===1?'ogłoszenie':count<5?'ogłoszenia':'ogłoszeń';
+  document.getElementById('listingsTitle').textContent=`${count} ${suf}`;
+  const page=filteredListings.slice((currentPage-1)*PAGE_SIZE, currentPage*PAGE_SIZE);
+  el.innerHTML=page.length ? page.map((l,i)=>renderRow(l,i)).join('')
+    : '<div class="empty">Brak ogłoszeń dla wybranych filtrów.</div>';
+  renderPagination();
+}
+
+function renderPagination() {
+  const total=Math.ceil(filteredListings.length/PAGE_SIZE);
+  const bar=document.getElementById('paginationBar');
+  if(total<=1){bar.innerHTML='';return;}
+  bar.innerHTML=Array.from({length:total},(_,i)=>i+1).map(p=>
+    `<button class="page-btn ${p===currentPage?'active':''}" onclick="goPage(${p})">${p}</button>`).join('');
+}
+
+function goPage(p){currentPage=p;renderListingsList();document.getElementById('allListingsView').scrollIntoView({behavior:'smooth',block:'start'});}
+
+// ═══════════════════════════════════════════════════════
+// PROFILES
+// ═══════════════════════════════════════════════════════
+function renderCardAll() {
+  const all=allCurrent();
+  const total=all.length;
+  const newC=all.filter(l=>l.status==='new').length;
+  const goneC=Object.values(PROFILES_DATA).flatMap(p=>p.gone).length;
+  document.getElementById('cardAllCount').textContent=total;
+  document.getElementById('cardAllSub').innerHTML=
+    `<span style="color:var(--new)">▲${newC} nowe</span> <span style="color:var(--gone)">▼${goneC} znikły</span>`;
+
+  // Wykres słupkowy per profil
+  const counts=Object.entries(PROFILES_DATA).map(([n,d])=>({name:n,c:d.current.length}));
+  const maxC2=Math.max(...counts.map(x=>x.c),1);
+  document.getElementById('cardAllChart').innerHTML=counts.map(x=>{
+    const h=Math.max(3,Math.round((x.c/maxC2)*36));
+    const col=x.c===0?'#222232':'var(--accent)';
+    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">
+      <div style="font-size:8px;font-family:'DM Mono',monospace;color:var(--muted)">${x.c||''}</div>
+      <div style="width:100%;height:${h}px;background:${col};border-radius:2px 2px 0 0;opacity:.8;" title="${x.name}: ${x.c}"></div>
+    </div>`;
+  }).join('');
+
+  // Aktywny styl
+  const isActive=activeProfile===null;
+  document.getElementById('cardAll').style.borderColor=isActive?'var(--accent)':'var(--border)';
+  document.getElementById('cardAll').style.background=isActive?'#1a1a22':'var(--surface)';
+  document.getElementById('cardAllBar').style.transform=isActive?'scaleX(1)':'scaleX(0)';
+}
+
+function renderProfiles() {
+  const maxC=Math.max(...Object.values(PROFILES_DATA).map(p=>p.current.length),1);
+  document.getElementById('profilesGrid').innerHTML=Object.entries(PROFILES_DATA).map(([name,data])=>{
+    const total=data.current.length, newC=data.current.filter(l=>l.status==='new').length;
+    const goneC=data.gone.length, pct=Math.round((total/maxC)*100), empty=total===0;
+    return `<div class="profile-card ${activeProfile===name?'active':''} ${empty?'empty-profile':''}" id="pc-${name}" onclick="toggleProfile('${name}')">
+      <div class="profile-name" style="${empty?'color:var(--muted)':''}">${name}${empty?'<span style="font-size:9px;color:var(--gone)">brak ogł.</span>':''}</div>
+      <div class="profile-count" style="${empty?'color:var(--muted)':''}">${total}</div>
+      ${empty
+        ?`<div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--gone);margin-bottom:10px;">0 aktywnych ogłoszeń</div>`
+        :`<div class="profile-deltas"><span class="delta-new">▲${newC} nowe</span><span class="delta-gone">▼${goneC} znikły</span></div>`}
+      <div class="profile-bar-bg"><div class="profile-bar-fill" style="width:${pct}%;${empty?'background:var(--muted)':''}"></div></div>
+      <a class="profile-olx-link" href="${data.url}" target="_blank" onclick="event.stopPropagation()">↗ olx.pl/oferty/uzytkownik/…</a>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// PRICE DISTRIBUTION
+// ═══════════════════════════════════════════════════════
+const BUCKETS=[
+  {label:'<700',min:0,max:700},{label:'700–900',min:700,max:900},
+  {label:'900–1100',min:900,max:1100},{label:'1100–1500',min:1100,max:1500},
+  {label:'1500–2500',min:1500,max:2500},{label:'>2500',min:2500,max:Infinity},
+];
+function renderPriceChart(listings) {
+  const prices=listings.map(l=>l.price).filter(p=>p>0);
+  const counts=BUCKETS.map(b=>prices.filter(p=>p>=b.min&&p<b.max).length);
+  const maxC=Math.max(...counts,1);
+  const avg=prices.length?Math.round(prices.reduce((a,b)=>a+b,0)/prices.length):0;
+  document.getElementById('priceAvg').textContent=avg.toLocaleString('pl-PL');
+  document.getElementById('priceMin').textContent=(prices.length?Math.min(...prices):0).toLocaleString('pl-PL');
+  document.getElementById('priceMax').textContent=(prices.length?Math.max(...prices):0).toLocaleString('pl-PL');
+  document.getElementById('priceBuckets').innerHTML=BUCKETS.map((b,i)=>`
+    <div class="bucket">
+      <div class="bucket-count">${counts[i]}</div>
+      <div class="bucket-bar" style="height:${Math.round((counts[i]/maxC)*52)+4}px" title="${counts[i]} ogł. ${b.label} zł"></div>
+      <div class="bucket-label">${b.label}</div>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+// PROFILE DETAIL
+// ═══════════════════════════════════════════════════════
+function toggleProfile(name) {
+  if(name===null){
+    // Kliknięto "Wszystkie"
+    closeProfile();
+    return;
+  }
+  if(activeProfile===name){closeProfile();return;}
+  activeProfile=name;
+  document.querySelectorAll('.profile-card').forEach(c=>c.classList.remove('active'));
+  document.getElementById('pc-'+name).classList.add('active');
+  openProfileDetail(name);
+}
+
+function openProfileDetail(name) {
+  const data=PROFILES_DATA[name];
+  const cur=data.current, gone=data.gone;
+  const newI=cur.filter(l=>l.status==='new');
+  const prices=cur.map(l=>l.price).filter(p=>p>0);
+  const avg=prices.length?Math.round(prices.reduce((a,b)=>a+b,0)/prices.length):0;
+
+  document.getElementById('detailName').innerHTML=`Profil: <span>${name}</span>`;
+  document.getElementById('dStatTotal').textContent=cur.length;
+  document.getElementById('dStatNew').textContent='+'+newI.length;
+  document.getElementById('dStatGone').textContent='-'+gone.length;
+  document.getElementById('dStatAvg').textContent=avg.toLocaleString('pl-PL')+' zł';
+
+  document.getElementById('dNewBadge').textContent=newI.length;
+  document.getElementById('dNewList').innerHTML=newI.length
+    ?newI.map((l,i)=>renderRow(l,i)).join('')
+    :'<div class="empty">Brak nowych.</div>';
+
+  document.getElementById('dGoneBadge').textContent=gone.length;
+  document.getElementById('dGoneList').innerHTML=gone.length
+    ?gone.map(l=>`<div class="listing-row" style="opacity:.55;cursor:default;">
+        <div class="listing-dot gone"></div>
+        <div class="listing-title">${l.title}</div><div></div>
+        <div class="listing-price" style="color:var(--gone)">${l.price.toLocaleString('pl-PL')} zł</div>
+        <div></div><div class="listing-date">${l.date}</div>
+      </div>`).join('')
+    :'<div class="empty">Brak usuniętych.</div>';
+
+  document.getElementById('dHistory').innerHTML=data.history.map((h,i)=>{
+    const isT=i===0;
+    const ch=i<data.history.length-1?h.total-data.history[i+1].total:0;
+    const chS=ch>0?`<span style="color:var(--new)">+${ch}</span>`:ch<0?`<span style="color:var(--gone)">${ch}</span>`:'<span style="color:#333350">±0</span>';
+    return `<div class="history-row">
+      <div class="history-date">${h.date}</div>
+      <div class="listing-dot ${isT?'new':'existing'}" style="flex-shrink:0"></div>
+      <div class="history-event">${isT?'<b>dziś</b> ':''}${h.newCount>0?`<span style="color:var(--new)">+${h.newCount} nowe</span> `:''}${h.goneCount>0?`<span style="color:var(--gone)">−${h.goneCount} znikły</span>`:''}</div>
+      <div style="font-size:11px;font-family:'DM Mono',monospace;color:var(--accent2);font-weight:600">${h.total} szt.</div>
+      <div style="font-size:10px;font-family:'DM Mono',monospace;min-width:36px;text-align:right">${chS}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('dActiveList').innerHTML=cur.length
+    ?cur.map((l,i)=>renderRow(l,i)).join('')
+    :'<div class="empty" style="color:var(--gone)">Brak aktywnych ogłoszeń na OLX.</div>';
+
+  document.getElementById('profileDetail').classList.add('visible');
+  document.getElementById('allListingsView').style.display='none';
+  document.getElementById('listingsLabel').textContent=`Profil: ${name}`;
+  document.getElementById('priceTitle').textContent=name;
+  renderPriceChart(cur);
+  renderCardAll();
+  document.getElementById('profileDetail').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+function closeProfile() {
+  activeProfile=null;
+  document.querySelectorAll('.profile-card').forEach(c=>c.classList.remove('active'));
+  document.getElementById('profileDetail').classList.remove('visible');
+  document.getElementById('allListingsView').style.display='block';
+  document.getElementById('listingsLabel').textContent='Wszystkie ogłoszenia';
+  document.getElementById('priceTitle').textContent='Wszystkie profile';
+  renderPriceChart(allCurrent());
+  renderCardAll();
+  applyFilters();
+}
+
+// ═══════════════════════════════════════════════════════
+// COUNTDOWN
+// ═══════════════════════════════════════════════════════
+function updateCountdown() {
+  const now=new Date(), next=new Date();
+  next.setHours(9,0,0,0);
+  if(now>=next) next.setDate(next.getDate()+1);
+  const d=next-now;
+  const h=Math.floor(d/3600000),m=Math.floor((d%3600000)/60000),s=Math.floor((d%60000)/1000);
+  document.getElementById('nextScan').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+// ═══════════════════════════════════════════════════════
+// BOOT
+// ═══════════════════════════════════════════════════════
+initStats();
+renderProfiles();
+renderCardAll();
+renderPriceChart(allCurrent());
+applyFilters();
+updateCountdown();
+setInterval(updateCountdown, 1000);
+</script>
+</body>
+</html>
