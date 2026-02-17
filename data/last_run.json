@@ -1,7 +1,7 @@
 {
-  "run_at": "2026-02-17 14:21:01",
-  "total_listings": 8,
-  "dates_found": 8,
+  "run_at": "2026-02-17 16:33:37",
+  "total_listings": 7,
+  "dates_found": 7,
   "market_total": 438,
   "crosscheck": [
     {
@@ -12,8 +12,8 @@
     },
     {
       "profile": "poqui",
-      "scraped": 4,
-      "official": 4,
+      "scraped": 3,
+      "official": 3,
       "ok": true
     },
     {
