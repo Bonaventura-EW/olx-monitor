@@ -63,30 +63,43 @@ jobs:
         run: |
           if [ -f data/price_history.json ]; then
             python - << 'PYEOF'
-          import json, re
+          import json, re, os
 
           with open("data/price_history.json", "r", encoding="utf-8") as f:
               history = json.load(f)
 
+          market_total = None
+          if os.path.exists("data/last_run.json"):
+              with open("data/last_run.json", "r", encoding="utf-8") as f:
+                  last_run = json.load(f)
+              market_total = last_run.get("market_total")
+
           with open("olx_dashboard.html", "r", encoding="utf-8") as f:
               html = f.read()
 
-          # Wstrzyknij dane jako window.__PRICE_HISTORY__ przed </script> na końcu
-          inject = f"\nwindow.__PRICE_HISTORY__ = {json.dumps(history, ensure_ascii=False)};\n"
-
+          # Wstrzyknij PRICE_HISTORY
+          inject_ph = f"window.__PRICE_HISTORY__ = {json.dumps(history, ensure_ascii=False)};"
           if "window.__PRICE_HISTORY__" in html:
               html = re.sub(
                   r"window\.__PRICE_HISTORY__\s*=\s*\{.*?\};",
-                  f"window.__PRICE_HISTORY__ = {json.dumps(history, ensure_ascii=False)};",
+                  inject_ph,
                   html, flags=re.DOTALL
               )
           else:
-              html = html.replace("</script>", inject + "</script>", 1)
+              html = html.replace("</script>", "\n" + inject_ph + "\n</script>", 1)
+
+          # Wstrzyknij MARKET_TOTAL
+          if market_total is not None:
+              inject_mt = f"window.__MARKET_TOTAL__ = {market_total};"
+              if "window.__MARKET_TOTAL__" in html:
+                  html = re.sub(r"window\.__MARKET_TOTAL__\s*=\s*\d+;", inject_mt, html)
+              else:
+                  html = html.replace("</script>", "\n" + inject_mt + "\n</script>", 1)
 
           with open("olx_dashboard.html", "w", encoding="utf-8") as f:
               f.write(html)
 
-          print(f"✅ Dashboard zaktualizowany – {len(history)} ogłoszeń w historii")
+          print(f"✅ Dashboard zaktualizowany — {len(history)} ogłoszeń, rynek OLX: {market_total}")
           PYEOF
           else
             echo "⚠  Brak data/price_history.json – dashboard bez wstrzykniętych danych"
