@@ -1,35 +1,39 @@
 {
-  "date": "2026-02-16 09:38",
-  "results": {
-    "wszystkie-lublin": {
-      "new": 2,
-      "deleted": 0,
-      "total": 434,
-      "status": "OK"
+  "run_at": "2026-02-17 11:35:18",
+  "total_listings": 8,
+  "dates_found": 8,
+  "market_total": 435,
+  "crosscheck": [
+    {
+      "profile": "artymiuk",
+      "scraped": 0,
+      "official": 0,
+      "ok": true
     },
-    "artymiuk": {
-      "new": 0,
-      "deleted": 0,
-      "total": 0,
-      "status": "OK"
+    {
+      "profile": "poqui",
+      "scraped": 4,
+      "official": 4,
+      "ok": true
     },
-    "poqui": {
-      "new": 0,
-      "deleted": 0,
-      "total": 5,
-      "status": "OK"
+    {
+      "profile": "pokojewlublinie",
+      "scraped": 2,
+      "official": 2,
+      "ok": true
     },
-    "stylowepokoje": {
-      "new": 0,
-      "deleted": 0,
-      "total": 2,
-      "status": "OK"
+    {
+      "profile": "villahome",
+      "scraped": 0,
+      "official": 0,
+      "ok": true
     },
-    "villahome": {
-      "new": 0,
-      "deleted": 0,
-      "total": 0,
-      "status": "OK"
+    {
+      "profile": "dawnypatron",
+      "scraped": 2,
+      "official": 2,
+      "ok": true
     }
-  }
+  ],
+  "problems": []
 }
