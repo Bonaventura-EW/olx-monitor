@@ -11,6 +11,23 @@
     --accent:#e8ff47;--accent2:#47c8ff;--text:#e8e8f0;--muted:#666688;
     --new:#47ffa0;--gone:#ff6b6b;
   }
+  /* Tryb dzienny */
+  body.day-mode {
+    --bg:#f4f4f8;--surface:#ffffff;--surface2:#eeeef4;--border:#dcdce8;
+    --accent:#5a6af0;--accent2:#2596be;--text:#1a1a2e;--muted:#8888aa;
+    --new:#1a7a3c;--gone:#c0392b;
+  }
+  body.day-mode .listing-row:hover{background:#f0f0f8;}
+  body.day-mode .search-box{background:#f4f4f8;}
+  /* Przycisk dzień/noc */
+  .theme-btn{background:transparent;border:1px solid var(--border);border-radius:6px;
+    padding:6px 10px;cursor:pointer;font-size:14px;transition:all .2s;line-height:1;}
+  .theme-btn:hover{border-color:var(--accent);}
+  /* Kolumna profilu w liście ogłoszeń */
+  .listing-profile{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);
+    text-align:center;white-space:nowrap;padding:2px 6px;border-radius:4px;
+    background:var(--surface2);border:1px solid var(--border);}
+  .listing-profile.other{color:var(--muted);opacity:.7;}
   *{margin:0;padding:0;box-sizing:border-box;}
   body{background:var(--bg);color:var(--text);font-family:'Sora',sans-serif;min-height:100vh;padding:24px;}
   body::before{content:'';position:fixed;inset:0;
@@ -69,7 +86,7 @@
   .profile-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden;}
   .profile-card::after{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));transform:scaleX(0);transform-origin:left;transition:transform .3s;}
   .profile-card:hover{border-color:#3a3a52;transform:translateY(-2px);box-shadow:0 8px 24px #00000060;}
-  .profile-card.active{border-color:var(--accent);background:#1a1a22;}
+  .profile-card.active{border-color:var(--accent);background:var(--surface2);}
   .profile-card.active::after{transform:scaleX(1);}
   .profile-name{font-size:11px;font-weight:600;font-family:'DM Mono',monospace;color:var(--accent);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}
   .profile-count{font-size:24px;font-weight:700;margin-bottom:6px;line-height:1;}
@@ -117,7 +134,7 @@
   /* LISTING ROW — 6 kolumn: dot | title | sparkline+delta | price | age | date-added */
   .listing-row{
     display:grid;
-    grid-template-columns:8px 1fr auto auto auto auto;
+    grid-template-columns:8px 1fr auto auto auto auto auto;
     align-items:center;
     padding:10px 18px;
     border-bottom:1px solid #1a1a24;
@@ -162,7 +179,7 @@
   /* TABLE HEADER ROW */
   .col-headers{
     display:grid;
-    grid-template-columns:8px 1fr auto auto auto auto;
+    grid-template-columns:8px 1fr auto auto auto auto auto;
     padding:6px 18px;
     gap:10px;
     border-bottom:2px solid var(--border);
@@ -255,6 +272,7 @@
     <h1>Pokoje <span>Lublin</span></h1>
   </div>
   <div class="header-right">
+    <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="Przełącz tryb dzienny/nocny">🌙</button>
     <button class="refresh-btn" id="refreshBtn" onclick="openRefreshModal()">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
@@ -361,6 +379,7 @@
       <div class="col-headers">
         <div></div>
         <div>Ogłoszenie</div>
+        <div style="text-align:center">Profil</div>
         <div style="text-align:right">Zmiana ceny</div>
         <div style="text-align:right">Cena</div>
         <div style="text-align:center">Wiek</div>
@@ -620,6 +639,7 @@ function renderRow(l, idx) {
     <div class="listing-row" onclick="togglePanel('${CSS.escape(l.id)}',event)" style="animation-delay:${idx*0.03}s">
       <div class="listing-dot ${l.status}"></div>
       <a class="listing-title" href="${l.url}" target="_blank" onclick="event.stopPropagation()" title="${l.title}">${l.title}</a>
+      <div style="text-align:center"><span class="listing-profile${l.profile&&!Object.keys(PROFILES_DATA).includes(l.profile)?' other':''}">${l.profile||'inne'}</span></div>
       <div class="price-change">${sparklineSVG(l.id)} ${priceDeltaTag(l.id)}</div>
       <div class="listing-price ${l.price<800?'cheap':''}">${l.price.toLocaleString('pl-PL')} zł</div>
       ${ageBadge(l)}
@@ -787,7 +807,7 @@ function renderCardAll() {
   // Aktywny styl
   const isActive=activeProfile===null;
   document.getElementById('cardAll').style.borderColor=isActive?'var(--accent)':'var(--border)';
-  document.getElementById('cardAll').style.background=isActive?'#1a1a22':'var(--surface)';
+  document.getElementById('cardAll').style.background=isActive?'var(--surface2)':'var(--surface)';
   document.getElementById('cardAllBar').style.transform=isActive?'scaleX(1)':'scaleX(0)';
 }
 
@@ -925,6 +945,27 @@ function updateCountdown() {
   const h=Math.floor(d/3600000),m=Math.floor((d%3600000)/60000),s=Math.floor((d%60000)/1000);
   document.getElementById('nextScan').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
+
+// ═══════════════════════════════════════════════════════
+// TRYB DZIENNY / NOCNY
+// ═══════════════════════════════════════════════════════
+function toggleTheme() {
+  const isDay = document.body.classList.toggle('day-mode');
+  document.getElementById('themeBtn').textContent = isDay ? '🌙' : '☀️';
+  localStorage.setItem('olx_theme', isDay ? 'day' : 'night');
+}
+
+// Przywróć zapisany motyw
+(function() {
+  const saved = localStorage.getItem('olx_theme');
+  if (saved === 'day') {
+    document.body.classList.add('day-mode');
+    document.addEventListener('DOMContentLoaded', () => {
+      const btn = document.getElementById('themeBtn');
+      if (btn) btn.textContent = '🌙';
+    });
+  }
+})();
 
 // ═══════════════════════════════════════════════════════
 // REFRESH — wywołanie GitHub Actions przez PAT
