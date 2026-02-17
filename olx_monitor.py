@@ -346,42 +346,47 @@ def save_profiles_state(all_listings, config, price_history):
     Zapisuje aktualny stan profili do data/profiles_state.json.
     Workflow wstrzykuje ten plik do dashboardu jako __PROFILES_DATA__.
     """
-    today    = datetime.now()
-    today_pl = today_label()
-
-    # Grupuj ogłoszenia per profil
     from collections import defaultdict
-    by_profile = defaultdict(list)
-    for l in all_listings:
-        by_profile[l["profile"]].append(l)
 
-    # Poprzedni stan — żeby wykryć nowe i zniknięte
-    prev_state = {}
+    today     = datetime.now()
+    today_pl  = today_label()
     state_file = "data/profiles_state.json"
+
+    # Wczytaj poprzedni stan jeden raz
+    prev_data: dict = {}
     if os.path.exists(state_file):
         try:
             with open(state_file, "r", encoding="utf-8") as f:
-                prev = json.load(f)
-            for pname, pdata in prev.items():
-                prev_state[pname] = {l["id"] for l in pdata.get("current", [])}
+                prev_data = json.load(f)
         except Exception:
             pass
+
+    # Grupuj ogłoszenia per profil
+    by_profile: dict = defaultdict(list)
+    for l in all_listings:
+        by_profile[l["profile"]].append(l)
+
+    # Etykieta daty w formacie "17 lut 2026"
+    month_pl = ["sty","lut","mar","kwi","maj","cze",
+                "lip","sie","wrz","paź","lis","gru"]
+    today_str = f"{today.day} {month_pl[today.month-1]} {today.year}"
 
     profiles_out = {}
     for p in config.get("profiles", []):
         name = p["name"]
         url  = p["url"]
-        listings = by_profile.get(name, [])
-        prev_ids  = prev_state.get(name, set())
+
+        listings  = by_profile.get(name, [])
+        prev_prof = prev_data.get(name, {})
+        prev_curr = prev_prof.get("current", [])
+        prev_ids  = {l["id"] for l in prev_curr}
         curr_ids  = {l["id"] for l in listings}
         new_ids   = curr_ids - prev_ids
         gone_ids  = prev_ids - curr_ids
 
-        # Zbuduj current[]
+        # current[] — ogłoszenia z bieżącego skanu
         current = []
         for l in listings:
-            h = price_history.get(l["id"], {})
-            prices = h.get("prices", [])
             current.append({
                 "id":      l["id"],
                 "title":   l["title"],
@@ -391,44 +396,26 @@ def save_profiles_state(all_listings, config, price_history):
                 "created": l.get("created") or "",
                 "daysOld": l.get("days_old"),
                 "date":    today_pl,
+                "profile": name,
             })
 
-        # Zbuduj gone[] — ogłoszenia które zniknęły dziś
-        gone = []
-        if prev_state.get(name):
-            prev_data = prev.get(name, {}) if "prev" in dir() else {}
-            for pl in prev_data.get("current", []):
-                if pl["id"] in gone_ids:
-                    gone.append({
-                        "id":    pl["id"],
-                        "title": pl["title"],
-                        "price": pl["price"],
-                        "url":   pl["url"],
-                        "date":  today_pl,
-                    })
+        # gone[] — ogłoszenia które zniknęły (z poprzedniego current[])
+        gone = [
+            {"id": pl["id"], "title": pl["title"],
+             "price": pl["price"], "url": pl["url"], "date": today_pl}
+            for pl in prev_curr if pl["id"] in gone_ids
+        ]
 
-        # Historia — append dzisiejszy wpis
-        history = []
-        if os.path.exists(state_file):
-            try:
-                with open(state_file, "r", encoding="utf-8") as f:
-                    old_state = json.load(f)
-                history = old_state.get(name, {}).get("history", [])
-            except Exception:
-                pass
-
-        today_str = today.strftime("%-d %b %Y").replace("Jan","sty").replace("Feb","lut")            .replace("Mar","mar").replace("Apr","kwi").replace("May","maj").replace("Jun","cze")            .replace("Jul","lip").replace("Aug","sie").replace("Sep","wrz").replace("Oct","paź")            .replace("Nov","lis").replace("Dec","gru")
-
-        # Usuń stary wpis z dzisiaj jeśli istnieje, dodaj nowy
-        history = [h for h in history if h.get("date") != today_str]
+        # Historia — jeden wpis na dzień, zastąp dzisiejszy jeśli istnieje
+        history = [h for h in prev_prof.get("history", [])
+                   if h.get("date") != today_str]
         history.append({
             "date":      today_str,
             "total":     len(current),
             "newCount":  len(new_ids),
             "goneCount": len(gone_ids),
         })
-        # Zachowaj ostatnie 30 dni
-        history = history[-30:]
+        history = history[-30:]   # max 30 dni
 
         profiles_out[name] = {
             "url":     url,
@@ -440,7 +427,8 @@ def save_profiles_state(all_listings, config, price_history):
     os.makedirs("data", exist_ok=True)
     with open(state_file, "w", encoding="utf-8") as f:
         json.dump(profiles_out, f, ensure_ascii=False, indent=2)
-    print(f"  → {state_file}: {sum(len(v['current']) for v in profiles_out.values())} ogłoszeń w {len(profiles_out)} profilach")
+    total = sum(len(v["current"]) for v in profiles_out.values())
+    print(f"  → {state_file}: {total} ogłoszeń w {len(profiles_out)} profilach")
     return profiles_out
 
 def main():
