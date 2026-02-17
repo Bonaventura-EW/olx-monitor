@@ -2,8 +2,7 @@ name: OLX Monitor – codzienny raport
 
 on:
   schedule:
-    - cron: "0 7 * * *"
-
+    - cron: "0 7 * * *"   # 09:00 czasu polskiego (UTC+2)
   workflow_dispatch:
     inputs:
       force_email:
@@ -60,12 +59,48 @@ jobs:
             echo '```' >> $GITHUB_STEP_SUMMARY
           fi
 
-      - name: Zapisz plik Excel do repozytorium
+      - name: Zaktualizuj dashboard (wstrzyknij świeże dane do HTML)
+        run: |
+          if [ -f data/price_history.json ]; then
+            python - << 'PYEOF'
+          import json, re
+
+          with open("data/price_history.json", "r", encoding="utf-8") as f:
+              history = json.load(f)
+
+          with open("olx_dashboard.html", "r", encoding="utf-8") as f:
+              html = f.read()
+
+          # Wstrzyknij dane jako window.__PRICE_HISTORY__ przed </script> na końcu
+          inject = f"\nwindow.__PRICE_HISTORY__ = {json.dumps(history, ensure_ascii=False)};\n"
+
+          if "window.__PRICE_HISTORY__" in html:
+              html = re.sub(
+                  r"window\.__PRICE_HISTORY__\s*=\s*\{.*?\};",
+                  f"window.__PRICE_HISTORY__ = {json.dumps(history, ensure_ascii=False)};",
+                  html, flags=re.DOTALL
+              )
+          else:
+              html = html.replace("</script>", inject + "</script>", 1)
+
+          with open("olx_dashboard.html", "w", encoding="utf-8") as f:
+              f.write(html)
+
+          print(f"✅ Dashboard zaktualizowany – {len(history)} ogłoszeń w historii")
+          PYEOF
+          else
+            echo "⚠  Brak data/price_history.json – dashboard bez wstrzykniętych danych"
+          fi
+
+      - name: Zapisz dane do repozytorium
         run: |
           git config user.name  "OLX Monitor Bot"
           git config user.email "bot@github-actions"
-          git add data/olx_monitoring.xlsx data/last_run.json
-          git diff --cached --quiet && echo "Brak zmian" && exit 0
+          git add data/olx_monitoring.xlsx
+          git add data/price_history.json   || true
+          git add data/last_run.json        || true
+          git add olx_dashboard.html        || true
+          git diff --cached --quiet && echo "Brak zmian do zapisania" && exit 0
           git commit -m "📊 OLX Monitor $(date +'%Y-%m-%d %H:%M')"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Bonaventura-EW/olx-monitor.git
-          git push origin main --force
+          git push origin main
