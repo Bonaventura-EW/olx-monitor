@@ -52,10 +52,10 @@
   .refresh-btn.error{border-color:#ff6b6b;color:#ff6b6b;}
   .pat-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;}
   .pat-overlay.open{display:flex;}
-  .pat-modal{background:#1a1a2e;border:1px solid var(--border);border-radius:12px;padding:28px 32px;width:420px;max-width:90vw;}
+  .pat-modal{background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:28px 32px;width:420px;max-width:90vw;}
   .pat-modal h3{margin:0 0 6px;font-size:15px;color:var(--fg);}
   .pat-modal p{margin:0 0 16px;font-size:12px;color:var(--muted);line-height:1.6;}
-  .pat-input{width:100%;box-sizing:border-box;background:#0d0d1a;border:1px solid var(--border);
+  .pat-input{width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);
     border-radius:6px;padding:10px 12px;color:var(--fg);font-family:'DM Mono',monospace;font-size:12px;
     outline:none;margin-bottom:6px;}
   .pat-input:focus{border-color:var(--accent);}
@@ -64,7 +64,7 @@
   .pat-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:4px;}
   .pat-actions button{padding:8px 18px;border-radius:6px;font-family:'DM Mono',monospace;font-size:12px;cursor:pointer;border:none;}
   .btn-cancel{background:transparent;border:1px solid var(--border)!important;color:var(--muted);}
-  .btn-run{background:var(--accent);color:#0d0d1a;font-weight:700;}
+  .btn-run{background:var(--accent);color:var(--bg);font-weight:700;}
   .btn-run:hover{opacity:.85;}
   .pat-save-row{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:11px;color:var(--muted);}
   .pat-save-row input[type=checkbox]{accent-color:var(--accent);width:14px;height:14px;cursor:pointer;}
@@ -453,9 +453,9 @@
 // Format: { "listing-id": { title, profile, created, prices: [{date,price}] } }
 // ═══════════════════════════════════════════════════════
 let PRICE_HISTORY = typeof window.__PRICE_HISTORY__ !== 'undefined' ? window.__PRICE_HISTORY__ : {};
-window.__MARKET_TOTAL__ = 438;
+window.__MARKET_TOTAL__ = 435;
 let MARKET_TOTAL  = window.__MARKET_TOTAL__;
-window.__LAST_RUN__ = "2026-02-17 16:33:37";
+window.__LAST_RUN__ = null;
 let LAST_RUN = window.__LAST_RUN__;
 window.__PROFILES_DATA__ = null;
 
