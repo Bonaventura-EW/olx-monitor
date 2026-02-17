@@ -237,6 +237,20 @@
   .detail-col-badge{font-size:10px;font-family:'DM Mono',monospace;padding:2px 8px;border-radius:20px;}
   .badge-new{background:#47ffa015;color:var(--new);border:1px solid #47ffa030;}
   .badge-gone{background:#ff6b6b15;color:var(--gone);border:1px solid #ff6b6b30;}
+  .badge-archive{background:#44446615;color:var(--muted);border:1px solid #44446630;}
+  .archive-row{display:grid;grid-template-columns:8px 1fr auto auto auto;gap:10px;
+    padding:10px 18px;border-bottom:1px solid var(--border);align-items:center;opacity:.5;}
+  .archive-row:last-child{border-bottom:none;}
+  .archive-row:hover{opacity:.75;background:var(--surface2);}
+  .archive-title{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .archive-title a{color:var(--muted);text-decoration:none;}
+  .archive-title a:hover{color:var(--accent2);}
+  .archive-price{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);text-align:right;white-space:nowrap;}
+  .archive-date{font-size:10px;font-family:'DM Mono',monospace;color:#33335a;text-align:right;white-space:nowrap;}
+  .archive-seen{font-size:9px;font-family:'DM Mono',monospace;color:#28284a;white-space:nowrap;text-align:right;}
+  .archive-toggle{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);cursor:pointer;
+    padding:3px 10px;border:1px solid var(--border);border-radius:4px;background:transparent;transition:all .15s;}
+  .archive-toggle:hover{border-color:var(--muted);color:var(--fg);}
   .history-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
   .history-row{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid #1a1a24;}
   /* Wykres historii ogłoszeń */
@@ -366,7 +380,7 @@
   <div class="price-buckets" id="priceBuckets"></div>
 </div>
 
-<div class="load-banner">
+<div class="load-banner" id="loadBanner" style="display:none">
   <span id="loadStatus">Brak danych — wczytaj <b>price_history.json</b> ręcznie:</span>
   <input type="file" id="jsonFileInput" accept=".json" onchange="loadJsonFile(this)">
   <button class="load-btn" onclick="document.getElementById('jsonFileInput').click()">Wczytaj JSON</button>
@@ -424,6 +438,16 @@
         <div id="dGoneList"></div>
       </div>
     </div>
+    <div class="section-label" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;">
+      <span>Archiwum ogłoszeń</span>
+      <span style="display:flex;align-items:center;gap:8px;">
+        <span class="detail-col-badge badge-archive" id="dArchiveBadge">0</span>
+        <button class="archive-toggle" id="dArchiveToggle" onclick="toggleArchive()">pokaż ▾</button>
+      </span>
+    </div>
+    <div id="dArchivePanel" style="display:none;">
+      <div class="history-panel" id="dArchiveList"></div>
+    </div>
     <div class="section-label">Historia skanów</div>
     <div class="history-panel" id="dHistory"></div>
     <div id="dHistoryChart"></div>
@@ -453,11 +477,11 @@
 // Format: { "listing-id": { title, profile, created, prices: [{date,price}] } }
 // ═══════════════════════════════════════════════════════
 let PRICE_HISTORY = typeof window.__PRICE_HISTORY__ !== 'undefined' ? window.__PRICE_HISTORY__ : {};
-window.__MARKET_TOTAL__ = 437;
+window.__MARKET_TOTAL__ = 435;
 let MARKET_TOTAL  = window.__MARKET_TOTAL__;
-window.__LAST_RUN__ = "2026-02-17 17:05:28";
+window.__LAST_RUN__ = null;
 let LAST_RUN = window.__LAST_RUN__;
-window.__PROFILES_DATA__ = {"artymiuk": {"url": "https://www.olx.pl/oferty/uzytkownik/BAm3j/", "current": [], "gone": [], "history": [{"date": "17 lut 2026", "total": 0, "newCount": 0, "goneCount": 0}]}, "poqui": {"url": "https://www.olx.pl/oferty/uzytkownik/p8eWV/", "current": [{"id": "swiezo-wykonczone-mieszkanie-z-duzym-balkonem-ponikwoda-CID3-ID1951OR", "title": "Świeżo wykończone mieszkanie z dużym balkonem - Ponikwoda", "price": 2299, "url": "https://www.olx.pl/d/oferta/swiezo-wykonczone-mieszkanie-z-duzym-balkonem-ponikwoda-CID3-ID1951OR.html", "status": "existing", "created": "19.01.2026", "daysOld": 29, "date": "17 lut", "profile": "poqui"}, {"id": "kawalerka-po-remoncie-z-funkcjonalna-antresola-ul-jana-sawy-CID3-ID183ger", "title": "Kawalerka po remoncie z funkcjonalną antresolą - ul. Jana Sawy", "price": 2499, "url": "https://www.olx.pl/d/oferta/kawalerka-po-remoncie-z-funkcjonalna-antresola-ul-jana-sawy-CID3-ID183ger.html", "status": "existing", "created": "28.10.2025", "daysOld": 112, "date": "17 lut", "profile": "poqui"}, {"id": "przytulny-pokoj-blisko-politechniki-ul-przytulna-CID3-ID17NeTz", "title": "Przytulny pokój blisko Politechniki – ul. Przytulna", "price": 599, "url": "https://www.olx.pl/d/oferta/przytulny-pokoj-blisko-politechniki-ul-przytulna-CID3-ID17NeTz.html", "status": "existing", "created": "10.10.2025", "daysOld": 130, "date": "17 lut", "profile": "poqui"}], "gone": [], "history": [{"date": "17 lut 2026", "total": 3, "newCount": 0, "goneCount": 0}]}, "pokojewlublinie": {"url": "https://www.olx.pl/oferty/uzytkownik/3cxbz/", "current": [{"id": "wolny-od-zaraz-pokoj-jedynka-ul-romanowskiego-58-CID3-ID16ZeYm", "title": "WOLNY OD ZARAZ! Pokój jedynka, ul. Romanowskiego 58", "price": 58640, "url": "https://www.olx.pl/d/oferta/wolny-od-zaraz-pokoj-jedynka-ul-romanowskiego-58-CID3-ID16ZeYm.html", "status": "existing", "created": "11.08.2025", "daysOld": 190, "date": "17 lut", "profile": "pokojewlublinie"}, {"id": "wolny-od-zaraz-super-lokalizacja-blisko-centrum-ul-paganiniego-12-CID3-ID195dLc", "title": "WOLNY OD ZARAZ! Super lokalizacja, blisko centrum, ul. Paganiniego 12", "price": 12640, "url": "https://www.olx.pl/d/oferta/wolny-od-zaraz-super-lokalizacja-blisko-centrum-ul-paganiniego-12-CID3-ID195dLc.html", "status": "existing", "created": "19.01.2026", "daysOld": 29, "date": "17 lut", "profile": "pokojewlublinie"}], "gone": [], "history": [{"date": "17 lut 2026", "total": 2, "newCount": 0, "goneCount": 0}]}, "villahome": {"url": "https://www.olx.pl/oferty/uzytkownik/1n7fOJ/", "current": [], "gone": [], "history": [{"date": "17 lut 2026", "total": 0, "newCount": 0, "goneCount": 0}]}, "dawnypatron": {"url": "https://www.olx.pl/oferty/uzytkownik/uD2d4/", "current": [{"id": "ladny-pokoj-jednoosobowy-wynajme-duzy-pokoj-w-centrum-ul-niecala-4-CID3-ID122jPM", "title": "Ładny pokój jednoosobowy. Wynajmę duży pokój w centrum. ul Niecała 4.", "price": 730, "url": "https://www.olx.pl/d/oferta/ladny-pokoj-jednoosobowy-wynajme-duzy-pokoj-w-centrum-ul-niecala-4-CID3-ID122jPM.html", "status": "existing", "created": "20.09.2024", "daysOld": 515, "date": "17 lut", "profile": "dawnypatron"}, {"id": "mam-do-wynajecia-pokoj-dla-os-pracujacej-lub-studenta-narutowicza-14-CID3-ID18ySfv", "title": "Mam do wynajęcia pokój dla os. pracującej lub studenta. Narutowicza 14", "price": 14690, "url": "https://www.olx.pl/d/oferta/mam-do-wynajecia-pokoj-dla-os-pracujacej-lub-studenta-narutowicza-14-CID3-ID18ySfv.html", "status": "existing", "created": "05.12.2025", "daysOld": 74, "date": "17 lut", "profile": "dawnypatron"}], "gone": [], "history": [{"date": "17 lut 2026", "total": 2, "newCount": 0, "goneCount": 0}]}};
+window.__PROFILES_DATA__ = null;
 
 function loadJsonFile(input) {
   const file = input.files[0];
@@ -957,6 +981,83 @@ function renderHistoryChart(history) {
 }
 
 // ═══════════════════════════════════════════════════════
+// ARCHIWUM — ogłoszenia historyczne (były, już ich nie ma)
+// ═══════════════════════════════════════════════════════
+let _archiveOpen = false;
+
+function toggleArchive() {
+  _archiveOpen = !_archiveOpen;
+  document.getElementById('dArchivePanel').style.display = _archiveOpen ? 'block' : 'none';
+  document.getElementById('dArchiveToggle').textContent  = _archiveOpen ? 'ukryj ▴' : 'pokaż ▾';
+}
+
+function buildArchive(profileName) {
+  // Zbierz wszystkie ID aktualnie aktywnych ogłoszeń tego profilu
+  const data    = PROFILES_DATA[profileName];
+  const currIds = new Set(data.current.map(l => l.id));
+
+  // Z PRICE_HISTORY wyciągnij ogłoszenia tego profilu których nie ma w current[]
+  const archived = Object.entries(PRICE_HISTORY)
+    .filter(([id, h]) => h.profile === profileName && !currIds.has(id))
+    .map(([id, h]) => {
+      const prices  = h.prices || [];
+      const lastP   = prices.length ? prices[prices.length - 1] : null;
+      const firstP  = prices.length ? prices[0] : null;
+      const seenN   = prices.length;
+      return {
+        id,
+        title:    h.title || id,
+        url:      `https://www.olx.pl/d/oferta/${id}.html`,
+        price:    lastP  ? lastP.price  : 0,
+        firstDate: firstP ? firstP.date  : '?',
+        lastDate:  lastP  ? lastP.date   : '?',
+        seenN,
+        created:  h.created || '',
+      };
+    })
+    // Sortuj: ostatnio widziane najpierw
+    .sort((a, b) => b.lastDate.localeCompare(a.lastDate));
+
+  const badge = document.getElementById('dArchiveBadge');
+  if (badge) badge.textContent = archived.length;
+
+  const panel = document.getElementById('dArchiveList');
+  if (!panel) return;
+
+  if (archived.length === 0) {
+    panel.innerHTML = '<div class="empty">Brak archiwalnych ogłoszeń — monitor działa za krótko lub profile_history.json nie jest wczytany.</div>';
+    return;
+  }
+
+  panel.innerHTML = archived.map(l => {
+    const priceStr  = l.price ? l.price.toLocaleString('pl-PL') + ' zł' : '—';
+    const seenStr   = l.seenN === 1 ? '1 skan' : `${l.seenN} skanów`;
+    const addedStr  = l.created ? `dodane ${l.created}` : '';
+    // Delta ceny z historii (pierwsza vs ostatnia cena)
+    const ph        = PRICE_HISTORY[l.id];
+    const pts       = ph ? (ph.prices || []) : [];
+    let deltaHtml   = '';
+    if (pts.length >= 2) {
+      const d = pts[pts.length-1].price - pts[0].price;
+      if (d !== 0) {
+        const cls  = d < 0 ? 'drop' : 'rise';
+        const sign = d < 0 ? '↓' : '↑';
+        deltaHtml = `<span class="price-delta ${cls}" style="font-size:9px;">${sign} ${Math.abs(d).toLocaleString('pl-PL')} zł</span>`;
+      } else {
+        deltaHtml = `<span class="price-delta stable" style="font-size:9px;">= bez zmian</span>`;
+      }
+    }
+    return `<div class="archive-row">
+      <div class="listing-dot gone" style="opacity:.4"></div>
+      <div class="archive-title"><a href="${l.url}" target="_blank" title="${l.title}">${l.title}</a></div>
+      <div class="archive-seen">${seenStr}${addedStr ? ' · ' + addedStr : ''}</div>
+      <div class="archive-price" style="display:flex;align-items:center;gap:6px;justify-content:flex-end;">${deltaHtml}<span>${priceStr}</span></div>
+      <div class="archive-date">ostatnio ${l.lastDate}</div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════
 // PROFILE DETAIL
 // ═══════════════════════════════════════════════════════
 function toggleProfile(name) {
@@ -992,12 +1093,17 @@ function openProfileDetail(name) {
 
   document.getElementById('dGoneBadge').textContent=gone.length;
   document.getElementById('dGoneList').innerHTML=gone.length
-    ?gone.map(l=>`<div class="listing-row" style="opacity:.55;cursor:default;">
-        <div class="listing-dot gone"></div>
-        <div class="listing-title">${l.title}</div><div></div>
-        <div class="listing-price" style="color:var(--gone)">${l.price.toLocaleString('pl-PL')} zł</div>
-        <div></div><div class="listing-date">${l.date}</div>
-      </div>`).join('')
+    ?gone.map(l=>{
+        const delta = priceDeltaTag(l.id);
+        const priceColor = 'color:var(--gone)';
+        return `<div class="listing-row" style="opacity:.65;cursor:default;">
+          <div class="listing-dot gone"></div>
+          <a class="listing-title" href="${l.url||'#'}" target="_blank" onclick="event.stopPropagation()" title="${l.title}">${l.title}</a>
+          <div class="price-change">${delta}</div>
+          <div class="listing-price" style="${priceColor}">${l.price?l.price.toLocaleString('pl-PL')+' zł':'—'}</div>
+          <div></div><div class="listing-added">${l.date||''}</div>
+        </div>`;
+      }).join('')
     :'<div class="empty">Brak usuniętych.</div>';
 
   document.getElementById('dHistory').innerHTML=data.history.map((h,i)=>{
@@ -1023,6 +1129,11 @@ function openProfileDetail(name) {
   document.getElementById('priceTitle').textContent=name;
   renderPriceChart(cur);
   renderHistoryChart(data.history);
+  _archiveOpen = false;
+  document.getElementById('dArchivePanel').style.display = 'none';
+  const archToggle = document.getElementById('dArchiveToggle');
+  if (archToggle) archToggle.textContent = 'pokaż ▾';
+  buildArchive(name);
   renderCardAll();
   document.getElementById('profileDetail').scrollIntoView({behavior:'smooth',block:'start'});
 }
@@ -1216,10 +1327,17 @@ function startPolling(pat) {
 // Jeśli dane zostały wstrzyknięte przez GitHub Actions — wczytaj automatycznie
 if (Object.keys(PRICE_HISTORY).length > 0) {
   enrichListingsFromHistory();
-  // Ukryj cały baner — dane załadowane automatycznie
-  const banner = document.querySelector('.load-banner');
-  if (banner) banner.style.display = 'none';
 }
+
+// Pokaż baner TYLKO gdy brak danych z obu źródeł
+(function() {
+  const hasProfiles     = window.__PROFILES_DATA__ !== null && window.__PROFILES_DATA__ !== undefined;
+  const hasPriceHistory = Object.keys(PRICE_HISTORY).length > 0;
+  const banner = document.getElementById('loadBanner');
+  if (banner && !hasProfiles && !hasPriceHistory) {
+    banner.style.display = 'flex';
+  }
+})();
 
 initStats();
 renderProfiles();
