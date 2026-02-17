@@ -23,9 +23,34 @@
   .logo{font-size:11px;letter-spacing:.25em;text-transform:uppercase;color:var(--muted);font-family:'DM Mono',monospace;margin-bottom:5px;}
   h1{font-size:26px;font-weight:700;line-height:1.1;}
   h1 span{color:var(--accent);}
-  .header-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px;}
+  .header-right{display:flex;flex-direction:row;align-items:center;gap:12px;}
   .pulse-dot{width:8px;height:8px;background:var(--new);border-radius:50%;box-shadow:0 0 12px var(--new);animation:pulse 2s ease-in-out infinite;}
   .live-label{font-size:10px;font-family:'DM Mono',monospace;color:var(--new);letter-spacing:.1em;}
+  .refresh-btn{display:flex;align-items:center;gap:6px;padding:6px 12px;background:transparent;
+    border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;
+    font-family:'DM Mono',monospace;cursor:pointer;transition:all .2s;}
+  .refresh-btn:hover{border-color:var(--accent);color:var(--accent);}
+  .refresh-btn.running{border-color:var(--new);color:var(--new);}
+  .refresh-btn.done{border-color:#47ffa0;color:#47ffa0;}
+  .refresh-btn.error{border-color:#ff6b6b;color:#ff6b6b;}
+  .pat-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;}
+  .pat-overlay.open{display:flex;}
+  .pat-modal{background:#1a1a2e;border:1px solid var(--border);border-radius:12px;padding:28px 32px;width:420px;max-width:90vw;}
+  .pat-modal h3{margin:0 0 6px;font-size:15px;color:var(--fg);}
+  .pat-modal p{margin:0 0 16px;font-size:12px;color:var(--muted);line-height:1.6;}
+  .pat-input{width:100%;box-sizing:border-box;background:#0d0d1a;border:1px solid var(--border);
+    border-radius:6px;padding:10px 12px;color:var(--fg);font-family:'DM Mono',monospace;font-size:12px;
+    outline:none;margin-bottom:6px;}
+  .pat-input:focus{border-color:var(--accent);}
+  .pat-hint{font-size:11px;color:var(--muted);margin-bottom:16px;line-height:1.5;}
+  .pat-hint a{color:var(--accent);text-decoration:none;}
+  .pat-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:4px;}
+  .pat-actions button{padding:8px 18px;border-radius:6px;font-family:'DM Mono',monospace;font-size:12px;cursor:pointer;border:none;}
+  .btn-cancel{background:transparent;border:1px solid var(--border)!important;color:var(--muted);}
+  .btn-run{background:var(--accent);color:#0d0d1a;font-weight:700;}
+  .btn-run:hover{opacity:.85;}
+  .pat-save-row{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:11px;color:var(--muted);}
+  .pat-save-row input[type=checkbox]{accent-color:var(--accent);width:14px;height:14px;cursor:pointer;}
   @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
 
   .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px;animation:fadeUp .4s .05s ease both;}
@@ -230,10 +255,39 @@
     <h1>Pokoje <span>Lublin</span></h1>
   </div>
   <div class="header-right">
-    <div class="pulse-dot"></div>
-    <div class="live-label">LIVE</div>
+    <button class="refresh-btn" id="refreshBtn" onclick="openRefreshModal()">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>
+      </svg>
+      <span id="refreshBtnLabel">Odśwież</span>
+    </button>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+      <div class="pulse-dot"></div>
+      <div class="live-label">LIVE</div>
+    </div>
   </div>
 </header>
+
+<!-- Modal PAT -->
+<div class="pat-overlay" id="patOverlay" onclick="if(event.target===this)closeRefreshModal()">
+  <div class="pat-modal">
+    <h3>🔄 Uruchom skan OLX</h3>
+    <p>Wpisz GitHub Personal Access Token (PAT) z uprawnieniem <code style="color:var(--accent)">Actions: write</code> żeby uruchomić workflow.</p>
+    <input class="pat-input" type="password" id="patInput" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+    <div class="pat-hint">
+      Utwórz token: <a href="https://github.com/settings/tokens/new?scopes=repo&description=OLX+Monitor" target="_blank">github.com/settings/tokens</a>
+      — zakres: <code>repo</code> lub <code>workflow</code>
+    </div>
+    <div class="pat-save-row">
+      <input type="checkbox" id="patSave" checked>
+      <label for="patSave">Zapamiętaj token w tej przeglądarce (localStorage)</label>
+    </div>
+    <div class="pat-actions">
+      <button class="btn-cancel" onclick="closeRefreshModal()">Anuluj</button>
+      <button class="btn-run" onclick="triggerWorkflow()">▶ Uruchom</button>
+    </div>
+  </div>
+</div>
 
 <div class="stats-row">
   <div class="stat"><div class="stat-label">Ogłoszenia dziś</div><div class="stat-value blue" id="statTotal">—</div><div class="stat-sub">wszystkie profile</div></div>
@@ -251,9 +305,16 @@
     position:relative;overflow:hidden;
   ">
     <div style="position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));transform:scaleX(0);transform-origin:left;transition:transform .3s;" id="cardAllBar"></div>
-    <div style="font-size:11px;font-weight:600;font-family:'DM Mono',monospace;color:var(--accent);margin-bottom:10px;">wszystkie</div>
-    <div style="font-size:24px;font-weight:700;margin-bottom:6px;" id="cardAllCount">—</div>
-    <div style="font-size:10px;font-family:'DM Mono',monospace;margin-bottom:10px;" id="cardAllSub"></div>
+    <a href="https://www.olx.pl/nieruchomosci/stancje-pokoje/lublin/" target="_blank"
+       onclick="event.stopPropagation()"
+       style="font-size:11px;font-weight:600;font-family:'DM Mono',monospace;color:var(--accent);
+              margin-bottom:10px;display:block;text-decoration:none;"
+       onmouseover="this.style.opacity='.7'" onmouseout="this.style.opacity='1'">
+      OLX Lublin ↗
+    </a>
+    <div style="font-size:24px;font-weight:700;margin-bottom:2px;" id="cardAllCount">—</div>
+    <div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);margin-bottom:10px;">stancje i pokoje</div>
+    <div style="font-size:10px;font-family:'DM Mono',monospace;margin-bottom:8px;" id="cardAllSub"></div>
     <!-- Wykres słupkowy: liczba ogłoszeń per profil -->
     <div id="cardAllChart" style="display:flex;gap:3px;align-items:flex-end;height:40px;margin-top:4px;"></div>
   </div>
@@ -359,6 +420,7 @@
 // Format: { "listing-id": { title, profile, created, prices: [{date,price}] } }
 // ═══════════════════════════════════════════════════════
 let PRICE_HISTORY = typeof window.__PRICE_HISTORY__ !== 'undefined' ? window.__PRICE_HISTORY__ : {};
+let MARKET_TOTAL  = typeof window.__MARKET_TOTAL__  !== 'undefined' ? window.__MARKET_TOTAL__  : null;
 
 function loadJsonFile(input) {
   const file = input.files[0];
@@ -698,11 +760,15 @@ function goPage(p){currentPage=p;renderListingsList();document.getElementById('a
 // ═══════════════════════════════════════════════════════
 function renderCardAll() {
   const all=allCurrent();
-  const total=all.length;
   const newC=all.filter(l=>l.status==='new').length;
   const goneC=Object.values(PROFILES_DATA).flatMap(p=>p.gone).length;
-  document.getElementById('cardAllCount').textContent=total;
-  document.getElementById('cardAllSub').innerHTML=
+
+  // Główna liczba — rynek OLX Lublin (lub suma profili jako fallback)
+  const mainCount = MARKET_TOTAL !== null ? MARKET_TOTAL : all.length;
+  document.getElementById('cardAllCount').textContent = mainCount;
+
+  // Podnapis — nowe/znikłe z monitorowanych profili
+  document.getElementById('cardAllSub').innerHTML =
     `<span style="color:var(--new)">▲${newC} nowe</span> <span style="color:var(--gone)">▼${goneC} znikły</span>`;
 
   // Wykres słupkowy per profil
@@ -857,6 +923,95 @@ function updateCountdown() {
   const d=next-now;
   const h=Math.floor(d/3600000),m=Math.floor((d%3600000)/60000),s=Math.floor((d%60000)/1000);
   document.getElementById('nextScan').textContent=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+// ═══════════════════════════════════════════════════════
+// REFRESH — wywołanie GitHub Actions przez PAT
+// ═══════════════════════════════════════════════════════
+const GH_OWNER    = 'Bonaventura-EW';
+const GH_REPO     = 'olx-monitor';
+const GH_WORKFLOW = 'olx_monitor.yml';
+const PAT_KEY     = 'olx_monitor_gh_pat';
+
+function openRefreshModal() {
+  const saved = localStorage.getItem(PAT_KEY) || '';
+  document.getElementById('patInput').value = saved;
+  document.getElementById('patOverlay').classList.add('open');
+  setTimeout(() => document.getElementById('patInput').focus(), 100);
+}
+
+function closeRefreshModal() {
+  document.getElementById('patOverlay').classList.remove('open');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeRefreshModal();
+  if (e.key === 'Enter' && document.getElementById('patOverlay').classList.contains('open')) triggerWorkflow();
+});
+
+async function triggerWorkflow() {
+  const pat = document.getElementById('patInput').value.trim();
+  if (!pat) { alert('Wpisz token PAT'); return; }
+
+  if (document.getElementById('patSave').checked) {
+    localStorage.setItem(PAT_KEY, pat);
+  } else {
+    localStorage.removeItem(PAT_KEY);
+  }
+
+  closeRefreshModal();
+
+  const btn   = document.getElementById('refreshBtn');
+  const label = document.getElementById('refreshBtnLabel');
+  btn.className   = 'refresh-btn running';
+  label.textContent = 'Uruchamiam...';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/actions/workflows/${GH_WORKFLOW}/dispatches`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${pat}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        },
+        body: JSON.stringify({ ref: 'main' }),
+      }
+    );
+
+    if (res.status === 204) {
+      // Sukces — workflow uruchomiony
+      btn.className   = 'refresh-btn done';
+      label.textContent = '✓ Uruchomiono';
+      setTimeout(() => {
+        btn.className   = 'refresh-btn';
+        label.textContent = 'Odśwież';
+        btn.disabled = false;
+      }, 4000);
+    } else if (res.status === 401 || res.status === 403) {
+      btn.className   = 'refresh-btn error';
+      label.textContent = '✗ Błąd tokenu';
+      btn.disabled = false;
+      setTimeout(() => { btn.className='refresh-btn'; label.textContent='Odśwież'; }, 4000);
+      alert(`Błąd autoryzacji (${res.status}). Sprawdź czy token ma uprawnienie "workflow" lub "repo".`);
+    } else {
+      const body = await res.text();
+      btn.className   = 'refresh-btn error';
+      label.textContent = `✗ Błąd ${res.status}`;
+      btn.disabled = false;
+      setTimeout(() => { btn.className='refresh-btn'; label.textContent='Odśwież'; }, 4000);
+      console.error('GitHub API error:', res.status, body);
+    }
+  } catch (err) {
+    btn.className   = 'refresh-btn error';
+    label.textContent = '✗ Brak sieci';
+    btn.disabled = false;
+    setTimeout(() => { btn.className='refresh-btn'; label.textContent='Odśwież'; }, 4000);
+    console.error(err);
+  }
 }
 
 // ═══════════════════════════════════════════════════════
