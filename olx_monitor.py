@@ -340,6 +340,109 @@ def save_to_excel(listings):
 
 
 # ── MAIN ──────────────────────────────────────────────────
+
+def save_profiles_state(all_listings, config, price_history):
+    """
+    Zapisuje aktualny stan profili do data/profiles_state.json.
+    Workflow wstrzykuje ten plik do dashboardu jako __PROFILES_DATA__.
+    """
+    today    = datetime.now()
+    today_pl = today_label()
+
+    # Grupuj ogłoszenia per profil
+    from collections import defaultdict
+    by_profile = defaultdict(list)
+    for l in all_listings:
+        by_profile[l["profile"]].append(l)
+
+    # Poprzedni stan — żeby wykryć nowe i zniknięte
+    prev_state = {}
+    state_file = "data/profiles_state.json"
+    if os.path.exists(state_file):
+        try:
+            with open(state_file, "r", encoding="utf-8") as f:
+                prev = json.load(f)
+            for pname, pdata in prev.items():
+                prev_state[pname] = {l["id"] for l in pdata.get("current", [])}
+        except Exception:
+            pass
+
+    profiles_out = {}
+    for p in config.get("profiles", []):
+        name = p["name"]
+        url  = p["url"]
+        listings = by_profile.get(name, [])
+        prev_ids  = prev_state.get(name, set())
+        curr_ids  = {l["id"] for l in listings}
+        new_ids   = curr_ids - prev_ids
+        gone_ids  = prev_ids - curr_ids
+
+        # Zbuduj current[]
+        current = []
+        for l in listings:
+            h = price_history.get(l["id"], {})
+            prices = h.get("prices", [])
+            current.append({
+                "id":      l["id"],
+                "title":   l["title"],
+                "price":   l["price"],
+                "url":     l["url"],
+                "status":  "new" if l["id"] in new_ids else "existing",
+                "created": l.get("created") or "",
+                "daysOld": l.get("days_old"),
+                "date":    today_pl,
+            })
+
+        # Zbuduj gone[] — ogłoszenia które zniknęły dziś
+        gone = []
+        if prev_state.get(name):
+            prev_data = prev.get(name, {}) if "prev" in dir() else {}
+            for pl in prev_data.get("current", []):
+                if pl["id"] in gone_ids:
+                    gone.append({
+                        "id":    pl["id"],
+                        "title": pl["title"],
+                        "price": pl["price"],
+                        "url":   pl["url"],
+                        "date":  today_pl,
+                    })
+
+        # Historia — append dzisiejszy wpis
+        history = []
+        if os.path.exists(state_file):
+            try:
+                with open(state_file, "r", encoding="utf-8") as f:
+                    old_state = json.load(f)
+                history = old_state.get(name, {}).get("history", [])
+            except Exception:
+                pass
+
+        today_str = today.strftime("%-d %b %Y").replace("Jan","sty").replace("Feb","lut")            .replace("Mar","mar").replace("Apr","kwi").replace("May","maj").replace("Jun","cze")            .replace("Jul","lip").replace("Aug","sie").replace("Sep","wrz").replace("Oct","paź")            .replace("Nov","lis").replace("Dec","gru")
+
+        # Usuń stary wpis z dzisiaj jeśli istnieje, dodaj nowy
+        history = [h for h in history if h.get("date") != today_str]
+        history.append({
+            "date":      today_str,
+            "total":     len(current),
+            "newCount":  len(new_ids),
+            "goneCount": len(gone_ids),
+        })
+        # Zachowaj ostatnie 30 dni
+        history = history[-30:]
+
+        profiles_out[name] = {
+            "url":     url,
+            "current": current,
+            "gone":    gone,
+            "history": history,
+        }
+
+    os.makedirs("data", exist_ok=True)
+    with open(state_file, "w", encoding="utf-8") as f:
+        json.dump(profiles_out, f, ensure_ascii=False, indent=2)
+    print(f"  → {state_file}: {sum(len(v['current']) for v in profiles_out.values())} ogłoszeń w {len(profiles_out)} profilach")
+    return profiles_out
+
 def main():
     print("=" * 60)
     print(f"OLX Monitor — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
@@ -374,6 +477,13 @@ def main():
     print("\n[3/3] Zapisywanie...")
     update_price_history(all_listings)
     save_to_excel(all_listings)
+
+    # Wczytaj price_history do stanu profili
+    ph = {}
+    if os.path.exists(PRICE_HISTORY_FILE):
+        with open(PRICE_HISTORY_FILE, "r", encoding="utf-8") as f:
+            ph = json.load(f)
+    save_profiles_state(all_listings, config, ph)
 
     # Podsumowanie
     with_date = [l for l in all_listings if l["created"]]
