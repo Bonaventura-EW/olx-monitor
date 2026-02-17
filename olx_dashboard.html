@@ -358,7 +358,7 @@
 // PRICE HISTORY — z price_history.json (nowy format)
 // Format: { "listing-id": { title, profile, created, prices: [{date,price}] } }
 // ═══════════════════════════════════════════════════════
-let PRICE_HISTORY = {};
+let PRICE_HISTORY = typeof window.__PRICE_HISTORY__ !== 'undefined' ? window.__PRICE_HISTORY__ : {};
 
 function loadJsonFile(input) {
   const file = input.files[0];
@@ -862,6 +862,14 @@ function updateCountdown() {
 // ═══════════════════════════════════════════════════════
 // BOOT
 // ═══════════════════════════════════════════════════════
+// Jeśli dane zostały wstrzyknięte przez GitHub Actions — wczytaj automatycznie
+if (Object.keys(PRICE_HISTORY).length > 0) {
+  enrichListingsFromHistory();
+  const n = Object.keys(PRICE_HISTORY).length;
+  document.getElementById('loadStatus').innerHTML =
+    '<span class="load-ok">✓ Dane aktualne — historia ' + n + ' ogłoszeń wczytana automatycznie</span>';
+}
+
 initStats();
 renderProfiles();
 renderCardAll();
