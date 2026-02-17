@@ -114,8 +114,20 @@ jobs:
                   profiles_state = json.load(f_ps)
               inject_pd = f"window.__PROFILES_DATA__ = {json.dumps(profiles_state, ensure_ascii=False)};"
               if "window.__PROFILES_DATA__" in html:
-                  html = re.sub(r"window\.__PROFILES_DATA__\s*=\s*\{.*?\};",
-                                inject_pd, html, flags=re.DOTALL)
+                  # Podmień całą linię window.__PROFILES_DATA__ = ...;
+                  # Regex obsługuje null, {} oraz wieloliniowy JSON
+                  html = re.sub(
+                      r"window\.__PROFILES_DATA__\s*=\s*(?:null|\{[^}]*\}|\{.*?\});",
+                      inject_pd,
+                      html,
+                      flags=re.DOTALL
+                  )
+                  # Fallback: jeśli regex nie trafił (np. wartość ma zagnieżdżone {})
+                  if inject_pd not in html:
+                      html = html.replace(
+                          "window.__PROFILES_DATA__ = null;",
+                          inject_pd
+                      )
               else:
                   html = html.replace("</script>", "\n" + inject_pd + "\n</script>", 1)
 
