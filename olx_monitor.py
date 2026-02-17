@@ -17,17 +17,26 @@ from openpyxl import load_workbook, Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 
+# ── KONFIGURACJA ─────────────────────────────────────────
 CONFIG_FILE        = "config.json"
-EXCEL_FILE         = "olx_monitoring.xlsx"
-PRICE_HISTORY_FILE = "price_history.json"
+EXCEL_FILE         = "data/olx_monitoring.xlsx"
+PRICE_HISTORY_FILE = "data/price_history.json"
 
 HEADERS = {
-    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "User-Agent":      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                       "AppleWebKit/537.36 (KHTML, like Gecko) "
+                       "Chrome/121.0.0.0 Safari/537.36",
     "Accept-Language": "pl-PL,pl;q=0.9",
     "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 
+# ── POMOCNICZE ────────────────────────────────────────────
 def parse_created(html):
+    """
+    Wyciąga datę publikacji ogłoszenia z zakodowanego JSON w HTML.
+    OLX osadza: createdTime\\\":\\\"2025-09-18T18:08:49+02:00\\\"
+    Zwraca (datetime_iso_str, days_old) lub (None, None).
+    """
     idx = html.find("createdTime")
     if idx < 0:
         return None, None
@@ -44,11 +53,57 @@ def parse_created(html):
     except Exception:
         return None, None
 
+
 def today_label():
-    months = ["sty","lut","mar","kwi","maj","cze","lip","sie","wrz","paź","lis","gru"]
+    """Krótka etykieta dnia dla price_history — np. '16 lut'."""
+    months = ["sty","lut","mar","kwi","maj","cze",
+               "lip","sie","wrz","paź","lis","gru"]
     n = datetime.now()
     return f"{n.day} {months[n.month - 1]}"
 
+
+# ── CROSS-CHECK: weryfikacja liczby ogłoszeń ─────────────
+def crosscheck_count(soup) -> int | None:
+    """
+    Wyciąga oficjalną liczbę ogłoszeń z tekstu 'Znaleźliśmy X ogłoszeń'
+    na stronie profilu OLX. Zwraca int lub None jeśli nie znaleziono.
+    """
+    for el in soup.find_all(string=re.compile(r"Znaleźliśmy")):
+        m = re.search(r"(\d+)", el)
+        if m:
+            return int(m.group(1))
+    return None
+
+
+def fetch_market_total() -> int | None:
+    """
+    Pobiera aktualną liczbę ogłoszeń stancji/pokoi w Lublinie z OLX.
+    Używa data-testid='total-count' który jest stabilnym selektorem.
+    """
+    url = "https://www.olx.pl/nieruchomosci/stancje-pokoje/lublin/"
+    try:
+        r    = requests.get(url, headers=HEADERS, timeout=15)
+        soup = BeautifulSoup(r.text, "html.parser")
+        el   = soup.find(attrs={"data-testid": "total-count"})
+        if el:
+            m = re.search(r"(\d+)", el.get_text())
+            if m:
+                total = int(m.group(1))
+                print(f"  → Rynek OLX Lublin (stancje/pokoje): {total} ogłoszeń")
+                return total
+        # fallback: szukaj w tekście strony
+        for text_el in soup.find_all(string=re.compile(r"Znaleźliśmy")):
+            m = re.search(r"(\d+)", text_el)
+            if m:
+                total = int(m.group(1))
+                print(f"  → Rynek OLX Lublin (fallback): {total} ogłoszeń")
+                return total
+    except Exception as e:
+        print(f"  ⚠ Błąd pobierania licznika rynku: {e}")
+    return None
+
+
+# ── SCRAPER: profil OLX → lista ogłoszeń ─────────────────
 def scrape_profile(profile_name, profile_url):
     print(f"  [{profile_name}] {profile_url}")
     try:
@@ -57,39 +112,105 @@ def scrape_profile(profile_name, profile_url):
     except Exception as e:
         print(f"    ⚠ Błąd pobierania profilu: {e}")
         return []
+
     soup = BeautifulSoup(r.text, "html.parser")
     listings, seen = [], set()
-    for a in soup.find_all("a", href=lambda h: h and "/d/oferta/" in h):
-        parent = a.parent
-        if not parent:
-            continue
-        if "css-1pktvhb" not in " ".join(parent.get("class", [])):
+
+    # Metoda 1: div[type="list"] — stabilny atrybut, niezależny od klas CSS
+    # OLX opakowuje każdą kartę ogłoszenia w <div type="list">
+    cards = soup.find_all("div", attrs={"type": "list"})
+
+    for card in cards:
+        a = card.find("a", href=lambda h: h and "/d/oferta/" in h)
+        if not a:
             continue
         href = re.sub(r"\?.*", "", a.get("href", ""))
         if href in seen:
             continue
         seen.add(href)
-        title = a.get_text(strip=True)
+
+        # Tytuł — w <p> wewnątrz karty
+        p_tag = card.find("p")
+        title = p_tag.get_text(strip=True) if p_tag else a.get_text(strip=True)
         if not title or len(title) < 5:
             continue
-        card_text = parent.get_text(" ", strip=True)
-        price_m   = re.search(r"([\d\s]{2,8})zł", card_text)
-        price     = int(re.sub(r"[^\d]", "", price_m.group(1))) if price_m and re.sub(r"[^\d]", "", price_m.group(1)) else 0
-        full_url  = ("https://www.olx.pl" + href) if href.startswith("/") else href
-        id_m      = re.search(r"/d/oferta/([^/?]+)", href)
-        listing_id = id_m.group(1) if id_m else href.replace("/", "_")
-        listings.append({"id": listing_id, "profile": profile_name, "title": title, "price": price, "url": full_url, "created": None, "days_old": None})
-    print(f"    → {len(listings)} ogłoszeń")
-    return listings
 
+        card_text = card.get_text(" ", strip=True)
+        price_m   = re.search(r"([\d\s]{2,8})\s*zł", card_text)
+        price     = int(re.sub(r"[^\d]", "", price_m.group(1))) if price_m and re.sub(r"[^\d]", "", price_m.group(1)) else 0
+
+        full_url   = ("https://www.olx.pl" + href) if href.startswith("/") else href
+        id_m       = re.search(r"/d/oferta/([^/?\.]+)", href)
+        listing_id = id_m.group(1) if id_m else href.replace("/", "_")
+
+        listings.append({
+            "id":       listing_id,
+            "profile":  profile_name,
+            "title":    title,
+            "price":    price,
+            "url":      full_url,
+            "created":  None,
+            "days_old": None,
+        })
+
+    # Metoda 2 (fallback): jeśli type=list nie zadziałał
+    if not listings:
+        print(f"    ⚠ Metoda type=list nie znalazła kart — fallback na href")
+        for a in soup.find_all("a", href=lambda h: h and "/d/oferta/" in h):
+            href = re.sub(r"\?.*", "", a.get("href", ""))
+            if href in seen:
+                continue
+            seen.add(href)
+            ancestor = a.parent.parent if (a.parent and a.parent.parent) else a.parent
+            if not ancestor:
+                continue
+            p_tag = ancestor.find("p")
+            title = p_tag.get_text(strip=True) if p_tag else ""
+            if not title or len(title) < 5:
+                continue
+            card_text  = ancestor.get_text(" ", strip=True)
+            price_m    = re.search(r"([\d\s]{2,8})\s*zł", card_text)
+            price      = int(re.sub(r"[^\d]", "", price_m.group(1))) if price_m and re.sub(r"[^\d]", "", price_m.group(1)) else 0
+            full_url   = ("https://www.olx.pl" + href) if href.startswith("/") else href
+            id_m       = re.search(r"/d/oferta/([^/?\.]+)", href)
+            listing_id = id_m.group(1) if id_m else href.replace("/", "_")
+            listings.append({
+                "id": listing_id, "profile": profile_name, "title": title,
+                "price": price, "url": full_url, "created": None, "days_old": None,
+            })
+
+    # ── Cross-check z oficjalną liczbą OLX ───────────────
+    official_count = crosscheck_count(soup)
+    scraped_count  = len(listings)
+
+    if official_count is None:
+        cc_msg = "⚠  cross-check: brak licznika na stronie"
+        cc_ok  = None
+    elif scraped_count == official_count:
+        cc_msg = f"✓  cross-check OK ({scraped_count} = {official_count})"
+        cc_ok  = True
+    else:
+        diff   = scraped_count - official_count
+        cc_msg = f"⚠  cross-check NIEZGODNOŚĆ: scraped={scraped_count}, OLX={official_count} (diff={diff:+d})"
+        cc_ok  = False
+
+    print(f"    → {scraped_count} ogłoszeń  |  {cc_msg}")
+    return listings, official_count, cc_ok
+
+
+# ── SCRAPER: data publikacji z każdego ogłoszenia ─────────
 def fetch_dates(listings, delay=1.2):
+    """
+    Wchodzi w stronę każdego ogłoszenia i wyciąga createdTime.
+    Delay chroni przed blokadą IP.
+    """
     print(f"\n  Pobieranie dat publikacji ({len(listings)} ogłoszeń, ~{len(listings)*delay:.0f}s)...")
     for i, l in enumerate(listings, 1):
         try:
-            r = requests.get(l["url"], headers=HEADERS, timeout=12)
+            r    = requests.get(l["url"], headers=HEADERS, timeout=12)
             created, days = parse_created(r.text)
-            l["created"]  = created
-            l["days_old"] = days
+            l["created"]  = created  # "DD.MM.YYYY" lub None
+            l["days_old"] = days     # int lub None
             status = f"{created}  ({days} dni)" if created else "brak daty"
         except Exception as e:
             l["created"]  = None
@@ -99,41 +220,66 @@ def fetch_dates(listings, delay=1.2):
         time.sleep(delay)
     return listings
 
+
+# ── PRICE HISTORY JSON ────────────────────────────────────
 def update_price_history(listings):
     today = today_label()
     history = {}
+    os.makedirs(os.path.dirname(PRICE_HISTORY_FILE), exist_ok=True)
     if os.path.exists(PRICE_HISTORY_FILE):
         try:
             with open(PRICE_HISTORY_FILE, "r", encoding="utf-8") as f:
                 history = json.load(f)
         except Exception:
             pass
+
     for l in listings:
         lid = l["id"]
         if lid not in history:
-            history[lid] = {"title": l["title"], "profile": l["profile"], "created": l["created"] or "", "prices": []}
+            history[lid] = {"title": l["title"], "profile": l["profile"],
+                            "created": l["created"] or "", "prices": []}
         else:
             if not history[lid].get("created") and l.get("created"):
                 history[lid]["created"] = l["created"]
+
         prices = history[lid]["prices"]
         entry  = next((e for e in prices if e["date"] == today), None)
         if entry:
             entry["price"] = l["price"]
         elif l["price"] > 0:
             prices.append({"date": today, "price": l["price"]})
+
     with open(PRICE_HISTORY_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
     print(f"  → {PRICE_HISTORY_FILE}: {len(history)} ogłoszeń")
 
+
+# ── EXCEL ─────────────────────────────────────────────────
 COLUMNS = [
-    ("Data skanu", 20), ("Profil", 16), ("Tytuł", 54), ("Cena (zł)", 12),
-    ("Data publikacji", 16), ("Dni od publikacji", 18), ("URL", 60), ("ID ogłoszenia", 44),
+    ("Data skanu",        20),
+    ("Profil",            16),
+    ("Tytuł",             54),
+    ("Cena (zł)",         12),
+    ("Data publikacji",   16),
+    ("Dni od publikacji", 18),
+    ("URL",               60),
+    ("ID ogłoszenia",     44),
 ]
+
+def cell_style(cell, color=None, bold=False, align="left"):
+    if color:
+        cell.font = Font(color=color, bold=bold, size=10)
+    elif bold:
+        cell.font = Font(bold=bold, size=10)
+    cell.alignment = Alignment(horizontal=align, vertical="center")
+
 
 def save_to_excel(listings):
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    thin = Side(style="thin", color="2a2a38")
+    thin   = Side(style="thin", color="2a2a38")
     border = Border(bottom=thin)
+
+    os.makedirs(os.path.dirname(EXCEL_FILE), exist_ok=True)
     if os.path.exists(EXCEL_FILE):
         wb = load_workbook(EXCEL_FILE)
         ws = wb.active
@@ -141,61 +287,142 @@ def save_to_excel(listings):
         wb = Workbook()
         ws = wb.active
         ws.title = "Historia"
+
+        # Nagłówki
         ws.append([col for col, _ in COLUMNS])
         hfill  = PatternFill("solid", fgColor="1a1a2e")
         hfont  = Font(color="e8ff47", bold=True, size=10)
         halign = Alignment(horizontal="center", vertical="center", wrap_text=False)
         for col_idx, cell in enumerate(ws[1], 1):
-            cell.fill = hfill
-            cell.font = hfont
+            cell.fill      = hfill
+            cell.font      = hfont
             cell.alignment = halign
-            cell.border = border
+            cell.border    = border
             ws.column_dimensions[get_column_letter(col_idx)].width = COLUMNS[col_idx-1][1]
-        ws.freeze_panes = "A2"
+
+        ws.freeze_panes    = "A2"
         ws.row_dimensions[1].height = 20
+
+    # Dane
     for l in listings:
         days = l.get("days_old")
-        ws.append([now, l["profile"], l["title"], l["price"], l["created"] or "", days if days is not None else "", l["url"], l["id"]])
+        ws.append([
+            now,
+            l["profile"],
+            l["title"],
+            l["price"],
+            l["created"] or "",
+            days if days is not None else "",
+            l["url"],
+            l["id"],
+        ])
         row = ws.max_row
+
+        # Wyrównanie
         ws.cell(row, 1).alignment = Alignment(horizontal="left")
         ws.cell(row, 3).alignment = Alignment(horizontal="left")
         ws.cell(row, 4).alignment = Alignment(horizontal="center")
         ws.cell(row, 5).alignment = Alignment(horizontal="center")
         ws.cell(row, 6).alignment = Alignment(horizontal="center")
+
+        # Kolorowanie kolumny "Dni od publikacji"
         if days is not None:
             cell = ws.cell(row, 6)
-            if days <= 3:    cell.font = Font(color="47ffa0", bold=True, size=10)
-            elif days <= 14: cell.font = Font(color="e8ff47", bold=False, size=10)
-            elif days > 60:  cell.font = Font(color="ff6b6b", bold=False, size=10)
+            if days <= 3:
+                cell.font = Font(color="47ffa0", bold=True, size=10)   # świeże — zielony
+            elif days <= 14:
+                cell.font = Font(color="e8ff47", bold=False, size=10)  # niedawne — żółty
+            elif days > 60:
+                cell.font = Font(color="ff6b6b", bold=False, size=10)  # stare — czerwony
+
     wb.save(EXCEL_FILE)
     print(f"  → {EXCEL_FILE}: +{len(listings)} wierszy (łącznie {ws.max_row - 1})")
 
+
+# ── MAIN ──────────────────────────────────────────────────
 def main():
     print("=" * 60)
     print(f"OLX Monitor — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 60)
+
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         config = json.load(f)
+
+    # 1. Scrape profiles
     print("\n[1/3] Scraping profili OLX...")
-    all_listings = []
+    all_listings  = []
+    crosscheck_results = []   # (profile, scraped, official, ok)
     for p in config.get("profiles", []):
-        all_listings.extend(scrape_profile(p["name"], p["url"]))
+        listings, official, cc_ok = scrape_profile(p["name"], p["url"])
+        all_listings.extend(listings)
+        crosscheck_results.append((p["name"], len(listings), official, cc_ok))
+
+    print("\n[+]   Pobieranie licznika rynku OLX Lublin...")
+    market_total = fetch_market_total()
+
     if not all_listings:
         print("⚠ Brak ogłoszeń. Koniec.")
         return
+
     print(f"\nRazem: {len(all_listings)} ogłoszeń")
+
+    # 2. Daty publikacji
     print("\n[2/3] Pobieranie dat publikacji z OLX...")
     all_listings = fetch_dates(all_listings, delay=1.2)
+
+    # 3. Zapis
     print("\n[3/3] Zapisywanie...")
     update_price_history(all_listings)
     save_to_excel(all_listings)
+
+    # Podsumowanie
     with_date = [l for l in all_listings if l["created"]]
     no_date   = [l for l in all_listings if not l["created"]]
     print(f"\n✓ Gotowe!")
     print(f"  Daty publikacji znalezione: {len(with_date)}/{len(all_listings)}")
     if no_date:
         print(f"  Bez daty: {[l['title'][:40] for l in no_date]}")
+
+    # ── Raport cross-check ────────────────────────────────
+    print("\n" + "=" * 60)
+    print("CROSS-CHECK — weryfikacja liczby ogłoszeń")
     print("=" * 60)
+    problems = []
+    for name, scraped, official, ok in crosscheck_results:
+        if ok is True:
+            status = "✓ OK"
+        elif ok is False:
+            status = f"⚠ NIEZGODNOŚĆ  scraped={scraped}  OLX={official}  diff={scraped-official:+d}"
+            problems.append(name)
+        else:
+            status = f"? brak licznika (scraped={scraped})"
+        print(f"  {name:<22} {status}")
+
+    if problems:
+        print(f"\n⚠  Niezgodności w profilach: {', '.join(problems)}")
+        print("   Sprawdź ręcznie lub uruchom ponownie za kilka minut.")
+    else:
+        print("\n✓ Wszystkie profile zgodne z licznikiem OLX.")
+
+    # Zapisz wyniki cross-check do last_run.json
+    import json as _json
+    last_run = {
+        "run_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "total_listings": len(all_listings),
+        "dates_found": len(with_date),
+        "market_total": market_total,
+        "crosscheck": [
+            {"profile": n, "scraped": s, "official": o, "ok": k}
+            for n, s, o, k in crosscheck_results
+        ],
+        "problems": problems,
+    }
+    os.makedirs("data", exist_ok=True)
+    with open("data/last_run.json", "w", encoding="utf-8") as f:
+        _json.dump(last_run, f, ensure_ascii=False, indent=2)
+    print(f"\n  → data/last_run.json zaktualizowany")
+    print("=" * 60)
+
 
 if __name__ == "__main__":
     main()
