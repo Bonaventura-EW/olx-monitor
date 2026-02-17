@@ -34,7 +34,11 @@ PROFILES = [
 # ─── ZBIERANIE DANYCH Z EXCELA ───────────────────────────────────────────────
 
 def get_weekly_data() -> dict:
-    """Odczytuje dane z ostatnich 7 dni z każdej zakładki Excela."""
+    """
+    Odczytuje dane z ostatnich 7 dni z każdej zakładki Excela.
+    - Jeden rekord na dzień (ostatni skan z danego dnia)
+    - Posortowane od najnowszej do najstarszej daty
+    """
     if not os.path.exists(EXCEL_FILE):
         print(f"⚠  Brak pliku Excel: {EXCEL_FILE}")
         return {}
@@ -50,30 +54,42 @@ def get_weekly_data() -> dict:
             print(f"  ⚠  Brak zakładki '{profile}' w Excelu – pomijam")
             continue
 
-        ws   = wb[profile]
-        rows = []
+        ws = wb[profile]
+        # Słownik: data_str -> ostatni rekord z tego dnia (najwyższy timestamp)
+        daily: dict = {}
 
         for row in ws.iter_rows(min_row=2, values_only=True):
             if not row[0]:
                 continue
             try:
-                row_date = datetime.strptime(str(row[0])[:16], "%Y-%m-%d %H:%M")
+                row_dt = datetime.strptime(str(row[0])[:16], "%Y-%m-%d %H:%M")
             except Exception:
                 continue
 
-            if row_date >= week_ago:
-                rows.append({
-                    "date":    str(row[0])[:10],
+            if row_dt < week_ago:
+                continue
+
+            date_str = row_dt.strftime("%Y-%m-%d")
+            # Zachowaj tylko ostatni (największy timestamp) z danego dnia
+            if date_str not in daily or row_dt > daily[date_str]["_dt"]:
+                daily[date_str] = {
+                    "_dt":     row_dt,
+                    "date":    date_str,
                     "total":   row[1] or 0,
                     "new":     row[2] or 0,
                     "deleted": row[3] or 0,
                     "net":     row[4] or 0,
                     "status":  row[7] or "?",
-                })
+                }
 
-        if rows:
+        if daily:
+            # Sortuj od najnowszej do najstarszej
+            rows = sorted(daily.values(), key=lambda x: x["_dt"], reverse=True)
+            # Usuń pomocnicze pole _dt
+            for r in rows:
+                del r["_dt"]
             data[profile] = rows
-            print(f"  ✓  {profile}: {len(rows)} wierszy, ostatnia data: {rows[-1]['date']}")
+            print(f"  ✓  {profile}: {len(rows)} dni, najnowszy: {rows[0]['date']}")
         else:
             print(f"  –  {profile}: brak danych z ostatnich 7 dni")
 
