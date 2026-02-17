@@ -111,7 +111,7 @@ def scrape_profile(profile_name, profile_url):
         r.raise_for_status()
     except Exception as e:
         print(f"    ⚠ Błąd pobierania profilu: {e}")
-        return []
+        return [], None, None
 
     soup = BeautifulSoup(r.text, "html.parser")
     listings, seen = [], set()
