@@ -239,6 +239,18 @@
   .badge-gone{background:#ff6b6b15;color:var(--gone);border:1px solid #ff6b6b30;}
   .history-panel{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
   .history-row{display:flex;align-items:center;gap:12px;padding:10px 16px;border-bottom:1px solid #1a1a24;}
+  /* Wykres historii ogłoszeń */
+  .history-chart{padding:16px 18px 8px;background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-top:8px;}
+  .hchart-title{font-size:10px;font-family:'DM Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;}
+  .hchart-bars{display:flex;align-items:flex-end;gap:4px;height:80px;}
+  .hchart-col{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;min-width:0;}
+  .hchart-bar{width:100%;border-radius:3px 3px 0 0;transition:opacity .15s;cursor:default;position:relative;}
+  .hchart-bar:hover{opacity:.8;}
+  .hchart-val{font-size:9px;font-family:'DM Mono',monospace;color:var(--muted);line-height:1;}
+  .hchart-date{font-size:8px;font-family:'DM Mono',monospace;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;text-align:center;margin-top:2px;}
+  .hchart-bar.today{background:var(--accent);}
+  .hchart-bar.normal{background:var(--accent2);opacity:.6;}
+  .hchart-bar.gone{background:var(--gone);opacity:.7;}
   .history-row:last-child{border-bottom:none;}
   .history-date{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);min-width:80px;}
   .history-event{font-size:12px;flex:1;}
@@ -414,6 +426,7 @@
     </div>
     <div class="section-label">Historia skanów</div>
     <div class="history-panel" id="dHistory"></div>
+    <div id="dHistoryChart"></div>
     <div style="margin-top:12px;">
       <div class="section-label">Aktywne ogłoszenia</div>
       <div class="col-headers">
@@ -440,10 +453,11 @@
 // Format: { "listing-id": { title, profile, created, prices: [{date,price}] } }
 // ═══════════════════════════════════════════════════════
 let PRICE_HISTORY = typeof window.__PRICE_HISTORY__ !== 'undefined' ? window.__PRICE_HISTORY__ : {};
-window.__MARKET_TOTAL__ = 437;
+window.__MARKET_TOTAL__ = 435;
 let MARKET_TOTAL  = window.__MARKET_TOTAL__;
-window.__LAST_RUN__ = "2026-02-17 13:19:00";
+window.__LAST_RUN__ = null;
 let LAST_RUN = window.__LAST_RUN__;
+window.__PROFILES_DATA__ = null;
 
 function loadJsonFile(input) {
   const file = input.files[0];
@@ -666,7 +680,9 @@ function togglePanel(id, e) {
 // ═══════════════════════════════════════════════════════
 // PROFILES DATA — realne dane z OLX
 // ═══════════════════════════════════════════════════════
-const PROFILES_DATA = {
+const PROFILES_DATA = (window.__PROFILES_DATA__ !== null && window.__PROFILES_DATA__ !== undefined)
+  ? window.__PROFILES_DATA__
+  : {
   artymiuk: {
     url:'https://www.olx.pl/oferty/uzytkownik/BAm3j/',
     current:[], gone:[],
@@ -717,7 +733,7 @@ const PROFILES_DATA = {
     current:[], gone:[],
     history:[{date:'16 lut 2026',total:0,newCount:0,goneCount:0}]
   }
-};
+};;
 
 // ═══════════════════════════════════════════════════════
 // STATE
@@ -885,6 +901,62 @@ function renderPriceChart(listings) {
 }
 
 // ═══════════════════════════════════════════════════════
+// WYKRES HISTORII SKANÓW
+// ═══════════════════════════════════════════════════════
+function renderHistoryChart(history) {
+  const el = document.getElementById('dHistoryChart');
+  if (!el) return;
+  if (!history || history.length === 0) { el.innerHTML = ''; return; }
+
+  // Sortuj chronologicznie (najstarsze po lewej)
+  const sorted = [...history].reverse();
+  const maxTotal = Math.max(...sorted.map(h => h.total), 1);
+
+  const bars = sorted.map((h, i) => {
+    const isToday = (i === sorted.length - 1);
+    const pct     = maxTotal > 0 ? (h.total / maxTotal) : 0;
+    const barH    = Math.max(4, Math.round(pct * 64));
+
+    // Kolor: dziś = akcent, zmiana w górę = niebieski, bez zmiany = niebieski przyciemniony, spadek = czerwony
+    const prev  = i > 0 ? sorted[i-1].total : h.total;
+    const delta = h.total - prev;
+    let cls = 'normal';
+    if (isToday) cls = 'today';
+    else if (delta < 0) cls = 'gone';
+
+    // Skróć datę do DD.MM
+    const dateParts = h.date.match(/(\d+)/g);
+    let shortDate = h.date;
+    if (dateParts && dateParts.length >= 3) {
+      shortDate = dateParts[0].padStart(2,'0') + '.' + dateParts[1].padStart(2,'0');
+    } else {
+      // Format "16 lut 2026" → "16.02"
+      const monthMap = {sty:'01',lut:'02',mar:'03',kwi:'04',maj:'05',cze:'06',
+                        lip:'07',sie:'08',wrz:'09','paź':'10',lis:'11',gru:'12'};
+      const pm = h.date.match(/(\d+)\s+(\S+)/);
+      if (pm) {
+        const mo = monthMap[pm[2].toLowerCase()] || '??';
+        shortDate = pm[1].padStart(2,'0') + '.' + mo;
+      }
+    }
+
+    const deltaStr = delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : '±0';
+    const tooltip  = `${h.date}: ${h.total} ogłoszeń (${deltaStr})`;
+
+    return `<div class="hchart-col">
+      <div class="hchart-val">${h.total}</div>
+      <div class="hchart-bar ${cls}" style="height:${barH}px;" title="${tooltip}"></div>
+      <div class="hchart-date">${shortDate}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="history-chart">
+    <div class="hchart-title">Liczba ogłoszeń w czasie</div>
+    <div class="hchart-bars">${bars}</div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════
 // PROFILE DETAIL
 // ═══════════════════════════════════════════════════════
 function toggleProfile(name) {
@@ -950,6 +1022,7 @@ function openProfileDetail(name) {
   document.getElementById('listingsLabel').textContent=`Profil: ${name}`;
   document.getElementById('priceTitle').textContent=name;
   renderPriceChart(cur);
+  renderHistoryChart(data.history);
   renderCardAll();
   document.getElementById('profileDetail').scrollIntoView({behavior:'smooth',block:'start'});
 }
@@ -962,6 +1035,7 @@ function closeProfile() {
   document.getElementById('listingsLabel').textContent='Wszystkie ogłoszenia';
   document.getElementById('priceTitle').textContent='Wszystkie profile';
   renderPriceChart(allCurrent());
+  renderHistoryChart(null);
   renderCardAll();
   applyFilters();
 }
@@ -1023,6 +1097,9 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.getElementById('patOverlay').classList.contains('open')) triggerWorkflow();
 });
 
+let _pollInterval = null;
+let _pollStartedAt = null;
+
 async function triggerWorkflow() {
   const pat = document.getElementById('patInput').value.trim();
   if (!pat) { alert('Wpisz token PAT'); return; }
@@ -1037,7 +1114,7 @@ async function triggerWorkflow() {
 
   const btn   = document.getElementById('refreshBtn');
   const label = document.getElementById('refreshBtnLabel');
-  btn.className   = 'refresh-btn running';
+  btn.className = 'refresh-btn running';
   label.textContent = 'Uruchamiam...';
   btn.disabled = true;
 
@@ -1057,35 +1134,80 @@ async function triggerWorkflow() {
     );
 
     if (res.status === 204) {
-      // Sukces — workflow uruchomiony
-      btn.className   = 'refresh-btn done';
-      label.textContent = '✓ Uruchomiono';
-      setTimeout(() => {
-        btn.className   = 'refresh-btn';
-        label.textContent = 'Odśwież';
-        btn.disabled = false;
-      }, 4000);
+      _pollStartedAt = Date.now();
+      startPolling(pat);
     } else if (res.status === 401 || res.status === 403) {
-      btn.className   = 'refresh-btn error';
-      label.textContent = '✗ Błąd tokenu';
-      btn.disabled = false;
-      setTimeout(() => { btn.className='refresh-btn'; label.textContent='Odśwież'; }, 4000);
+      setRefreshBtn('error', '✗ Błąd tokenu');
       alert(`Błąd autoryzacji (${res.status}). Sprawdź czy token ma uprawnienie "workflow" lub "repo".`);
     } else {
       const body = await res.text();
-      btn.className   = 'refresh-btn error';
-      label.textContent = `✗ Błąd ${res.status}`;
-      btn.disabled = false;
-      setTimeout(() => { btn.className='refresh-btn'; label.textContent='Odśwież'; }, 4000);
+      setRefreshBtn('error', `✗ Błąd ${res.status}`);
       console.error('GitHub API error:', res.status, body);
     }
   } catch (err) {
-    btn.className   = 'refresh-btn error';
-    label.textContent = '✗ Brak sieci';
-    btn.disabled = false;
-    setTimeout(() => { btn.className='refresh-btn'; label.textContent='Odśwież'; }, 4000);
+    setRefreshBtn('error', '✗ Brak sieci');
     console.error(err);
   }
+}
+
+function setRefreshBtn(state, text, keep=false) {
+  const btn   = document.getElementById('refreshBtn');
+  const label = document.getElementById('refreshBtnLabel');
+  btn.className = 'refresh-btn' + (state ? ' ' + state : '');
+  label.textContent = text;
+  btn.disabled = (state === 'running');
+  if (!keep && state !== 'running') {
+    setTimeout(() => { btn.className='refresh-btn'; label.textContent='Odśwież'; btn.disabled=false; }, 5000);
+  }
+}
+
+function startPolling(pat) {
+  if (_pollInterval) clearInterval(_pollInterval);
+  let elapsed = 0;
+  setRefreshBtn('running', 'Skan w toku… 0:00', true);
+
+  _pollInterval = setInterval(async () => {
+    elapsed += 15;
+    const m = String(Math.floor(elapsed/60)).padStart(1,'0');
+    const s = String(elapsed % 60).padStart(2,'0');
+    setRefreshBtn('running', `Skan w toku… ${m}:${s}`, true);
+
+    // Sprawdź status ostatniego runu workflow
+    try {
+      const r = await fetch(
+        `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/actions/workflows/${GH_WORKFLOW}/runs?per_page=1`,
+        { headers: { 'Authorization': `Bearer ${pat}`, 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' } }
+      );
+      const data = await r.json();
+      const run  = data.workflow_runs?.[0];
+
+      if (!run) return;
+
+      // Ignoruj runy które wystartowały PRZED naszym kliknięciem
+      const runStarted = new Date(run.created_at).getTime();
+      if (runStarted < _pollStartedAt - 5000) return;
+
+      if (run.status === 'completed') {
+        clearInterval(_pollInterval);
+        _pollInterval = null;
+
+        if (run.conclusion === 'success') {
+          setRefreshBtn('done', '✓ Gotowe — odświeżam…', true);
+          // Poczekaj 3s na GitHub Pages deployment, potem przeładuj
+          setTimeout(() => location.reload(), 3000);
+        } else {
+          setRefreshBtn('error', `✗ Workflow: ${run.conclusion}`);
+        }
+      }
+    } catch(e) { /* sieć chwilowo niedostępna, spróbuj za 15s */ }
+
+    // Timeout po 10 minutach
+    if (elapsed >= 600) {
+      clearInterval(_pollInterval);
+      _pollInterval = null;
+      setRefreshBtn('error', '✗ Timeout — sprawdź Actions');
+    }
+  }, 15000);
 }
 
 // ═══════════════════════════════════════════════════════
