@@ -96,6 +96,18 @@ jobs:
               else:
                   html = html.replace("</script>", "\n" + inject_mt + "\n</script>", 1)
 
+          # Wstrzyknij LAST_RUN (czas ostatniego skanu z last_run.json)
+          if os.path.exists("data/last_run.json"):
+              with open("data/last_run.json", "r", encoding="utf-8") as f_lr:
+                  last_run_data = json.load(f_lr)
+              run_at = last_run_data.get("run_at", "")
+              if run_at:
+                  inject_lr = f'window.__LAST_RUN__ = "{run_at}";'
+                  if "window.__LAST_RUN__" in html:
+                      html = re.sub(r'window\.__LAST_RUN__\s*=\s*[^;]+;', inject_lr, html)
+                  else:
+                      html = html.replace("</script>", "\n" + inject_lr + "\n</script>", 1)
+
           with open("olx_dashboard.html", "w", encoding="utf-8") as f:
               f.write(html)
 
