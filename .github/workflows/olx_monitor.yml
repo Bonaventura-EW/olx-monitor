@@ -108,6 +108,17 @@ jobs:
                   else:
                       html = html.replace("</script>", "\n" + inject_lr + "\n</script>", 1)
 
+          # Wstrzyknij PROFILES_DATA ze świeżego profiles_state.json
+          if os.path.exists("data/profiles_state.json"):
+              with open("data/profiles_state.json", "r", encoding="utf-8") as f_ps:
+                  profiles_state = json.load(f_ps)
+              inject_pd = f"window.__PROFILES_DATA__ = {json.dumps(profiles_state, ensure_ascii=False)};"
+              if "window.__PROFILES_DATA__" in html:
+                  html = re.sub(r"window\.__PROFILES_DATA__\s*=\s*\{.*?\};",
+                                inject_pd, html, flags=re.DOTALL)
+              else:
+                  html = html.replace("</script>", "\n" + inject_pd + "\n</script>", 1)
+
           with open("olx_dashboard.html", "w", encoding="utf-8") as f:
               f.write(html)
 
@@ -123,6 +134,7 @@ jobs:
           git config user.email "bot@github-actions"
           git add data/olx_monitoring.xlsx
           git add data/price_history.json   || true
+          git add data/profiles_state.json  || true
           git add data/last_run.json        || true
           git add olx_dashboard.html        || true
           git diff --cached --quiet && echo "Brak zmian do zapisania" && exit 0
