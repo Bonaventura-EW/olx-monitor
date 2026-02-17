@@ -311,6 +311,7 @@
   <div class="stat"><div class="stat-label">Ogłoszenia dziś</div><div class="stat-value blue" id="statTotal">—</div><div class="stat-sub">wszystkie profile</div></div>
   <div class="stat"><div class="stat-label">Nowe dziś</div><div class="stat-value green" id="statNew">—</div><div class="stat-sub">pojawiły się</div></div>
   <div class="stat"><div class="stat-label">Zniknęły</div><div class="stat-value red" id="statGone">—</div><div class="stat-sub">usunięte/wynajęte</div></div>
+  <div class="stat"><div class="stat-label">Ostatni skan</div><div class="stat-value yellow" id="lastScan">—</div><div class="stat-sub" id="lastScanSub">brak danych</div></div>
   <div class="stat"><div class="stat-label">Nast. skan</div><div class="stat-value yellow" id="nextScan">—</div><div class="stat-sub">jutro 09:00</div></div>
 </div>
 
@@ -439,8 +440,10 @@
 // Format: { "listing-id": { title, profile, created, prices: [{date,price}] } }
 // ═══════════════════════════════════════════════════════
 let PRICE_HISTORY = typeof window.__PRICE_HISTORY__ !== 'undefined' ? window.__PRICE_HISTORY__ : {};
-window.__MARKET_TOTAL__ = 437;
+window.__MARKET_TOTAL__ = 435;
 let MARKET_TOTAL  = window.__MARKET_TOTAL__;
+window.__LAST_RUN__ = null;
+let LAST_RUN = window.__LAST_RUN__;
 
 function loadJsonFile(input) {
   const file = input.files[0];
@@ -730,6 +733,35 @@ function initStats() {
   document.getElementById('statTotal').textContent=all.length;
   document.getElementById('statNew').textContent='+'+all.filter(l=>l.status==='new').length;
   document.getElementById('statGone').textContent='-'+Object.values(PROFILES_DATA).flatMap(p=>p.gone).length;
+
+  // Ostatni skan
+  const el    = document.getElementById('lastScan');
+  const elSub = document.getElementById('lastScanSub');
+  if (LAST_RUN) {
+    const dt  = new Date(LAST_RUN.replace(' ', 'T'));
+    const now = new Date();
+    const diffMs  = now - dt;
+    const diffMin = Math.round(diffMs / 60000);
+    const diffH   = Math.floor(diffMin / 60);
+    const diffD   = Math.floor(diffH / 24);
+    // Godzina w formacie HH:MM
+    const hh = String(dt.getHours()).padStart(2,'0');
+    const mm = String(dt.getMinutes()).padStart(2,'0');
+    const dd = dt.getDate(), mo = dt.getMonth()+1, yy = dt.getFullYear();
+    el.textContent = `${hh}:${mm}`;
+    // Podnapis: kiedy + ile temu
+    let temu;
+    if (diffMin < 2)       temu = 'przed chwilą';
+    else if (diffMin < 60) temu = `${diffMin} min temu`;
+    else if (diffH < 24)   temu = `${diffH}h temu`;
+    else                   temu = `${diffD}d temu`;
+    const today = new Date();
+    const isToday = dd===today.getDate() && mo===today.getMonth()+1 && yy===today.getFullYear();
+    elSub.textContent = (isToday ? 'dziś' : `${dd}.${String(mo).padStart(2,'0')}.${yy}`) + ` · ${temu}`;
+  } else {
+    el.textContent  = '—';
+    elSub.textContent = 'brak danych';
+  }
 }
 
 function setFilter(f,btn) {
