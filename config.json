@@ -1,0 +1,10 @@
+{
+  "excel_file": "olx_monitoring.xlsx",
+  "profiles": [
+    {"name": "artymiuk",        "url": "https://www.olx.pl/oferty/uzytkownik/BAm3j/"},
+    {"name": "poqui",           "url": "https://www.olx.pl/oferty/uzytkownik/p8eWV/"},
+    {"name": "pokojewlublinie", "url": "https://www.olx.pl/oferty/uzytkownik/3cxbz/"},
+    {"name": "villahome",       "url": "https://www.olx.pl/oferty/uzytkownik/1n7fOJ/"},
+    {"name": "dawnypatron",     "url": "https://www.olx.pl/oferty/uzytkownik/uD2d4/"}
+  ]
+}
