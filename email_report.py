@@ -21,12 +21,14 @@ SENDER_EMAIL    = "slowholidays00@gmail.com"
 RECIPIENT_EMAIL = "malczarski@gmail.com"
 EXCEL_FILE      = "data/olx_monitoring.xlsx"
 
+# Nazwy zakładek w Excelu — muszą być identyczne z config.json
 PROFILES = [
     "wszystkie-lublin",
     "artymiuk",
     "poqui",
-    "stylowepokoje",
+    "pokojewlublinie",   # było: stylowepokoje
     "villahome",
+    "dawnypatron",       # nowy profil
 ]
 
 # ─── ZBIERANIE DANYCH Z EXCELA ───────────────────────────────────────────────
@@ -34,14 +36,18 @@ PROFILES = [
 def get_weekly_data() -> dict:
     """Odczytuje dane z ostatnich 7 dni z każdej zakładki Excela."""
     if not os.path.exists(EXCEL_FILE):
+        print(f"⚠  Brak pliku Excel: {EXCEL_FILE}")
         return {}
 
-    wb   = openpyxl.load_workbook(EXCEL_FILE, data_only=True)
+    wb       = openpyxl.load_workbook(EXCEL_FILE, data_only=True)
     week_ago = datetime.now() - timedelta(days=7)
-    data = {}
+    data     = {}
+
+    print(f"  Zakładki w Excelu: {wb.sheetnames}")
 
     for profile in PROFILES:
         if profile not in wb.sheetnames:
+            print(f"  ⚠  Brak zakładki '{profile}' w Excelu – pomijam")
             continue
 
         ws   = wb[profile]
@@ -51,7 +57,6 @@ def get_weekly_data() -> dict:
             if not row[0]:
                 continue
             try:
-                # Kolumna A: data jako string "2026-02-15 09:00"
                 row_date = datetime.strptime(str(row[0])[:16], "%Y-%m-%d %H:%M")
             except Exception:
                 continue
@@ -68,12 +73,14 @@ def get_weekly_data() -> dict:
 
         if rows:
             data[profile] = rows
+            print(f"  ✓  {profile}: {len(rows)} wierszy, ostatnia data: {rows[-1]['date']}")
+        else:
+            print(f"  –  {profile}: brak danych z ostatnich 7 dni")
 
     return data
 
 
 def compute_summary(weekly_data: dict) -> dict:
-    """Oblicza sumaryczne statystyki tygodniowe dla każdego profilu."""
     summary = {}
     for profile, rows in weekly_data.items():
         total_new     = sum(r["new"]     for r in rows)
@@ -83,7 +90,7 @@ def compute_summary(weekly_data: dict) -> dict:
         errors        = sum(1 for r in rows if r["status"] != "OK")
 
         summary[profile] = {
-            "days_tracked": len(rows),
+            "days_tracked":  len(rows),
             "total_new":     total_new,
             "total_deleted": total_deleted,
             "net_week":      total_new - total_deleted,
@@ -101,15 +108,14 @@ def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
     today      = datetime.now().strftime("%d.%m.%Y")
     week_start = (datetime.now() - timedelta(days=6)).strftime("%d.%m.%Y")
 
-    # ── Tabela podsumowania tygodnia ──
     summary_rows = ""
     for profile, s in summary.items():
-        trend       = "↑" if s["net_week"] > 0 else ("↓" if s["net_week"] < 0 else "→")
-        new_style   = "color:#1a7a3c;font-weight:bold;" if s["total_new"] > 0 else ""
-        del_style   = "color:#c0392b;font-weight:bold;" if s["total_deleted"] > 0 else ""
-        net_color   = "#1a7a3c" if s["net_week"] > 0 else ("#c0392b" if s["net_week"] < 0 else "#555")
-        err_style   = "color:#c0392b;font-weight:bold;" if s["errors"] > 0 else "color:#888;"
-        net_str     = f"{s['net_week']:+d}{trend}"
+        trend     = "↑" if s["net_week"] > 0 else ("↓" if s["net_week"] < 0 else "→")
+        new_style = "color:#1a7a3c;font-weight:bold;" if s["total_new"] > 0 else ""
+        del_style = "color:#c0392b;font-weight:bold;" if s["total_deleted"] > 0 else ""
+        net_color = "#1a7a3c" if s["net_week"] > 0 else ("#c0392b" if s["net_week"] < 0 else "#555")
+        err_style = "color:#c0392b;font-weight:bold;" if s["errors"] > 0 else "color:#888;"
+        net_str   = f"{s['net_week']:+d}{trend}"
 
         summary_rows += f"""
         <tr>
@@ -122,16 +128,15 @@ def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
           <td style="padding:10px 14px;border-bottom:1px solid #eee;text-align:center;{err_style}">{s['errors']}</td>
         </tr>"""
 
-    # ── Zestawienie dzienne ──
     daily_sections = ""
     for profile, rows in weekly_data.items():
         daily_rows = ""
         for i, r in enumerate(rows):
-            bg       = "#f9f9f9" if i % 2 == 0 else "#ffffff"
-            net_str  = f"{r['net']:+d}" if r['net'] != 0 else "—"
-            net_col  = "#1a7a3c" if r['net'] > 0 else ("#c0392b" if r['net'] < 0 else "#888")
-            new_col  = "#1a7a3c" if r['new'] > 0 else "#333"
-            del_col  = "#c0392b" if r['deleted'] > 0 else "#333"
+            bg      = "#f9f9f9" if i % 2 == 0 else "#ffffff"
+            net_str = f"{r['net']:+d}" if r['net'] != 0 else "—"
+            net_col = "#1a7a3c" if r['net'] > 0 else ("#c0392b" if r['net'] < 0 else "#888")
+            new_col = "#1a7a3c" if r['new'] > 0 else "#333"
+            del_col = "#c0392b" if r['deleted'] > 0 else "#333"
             daily_rows += f"""
             <tr style="background:{bg};">
               <td style="padding:8px 12px;border-bottom:1px solid #eee;">{r['date']}</td>
@@ -167,7 +172,6 @@ def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
 <div style="max-width:680px;margin:32px auto;background:#fff;border-radius:10px;
             overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
 
-  <!-- NAGŁÓWEK -->
   <div style="background:#2c5f8a;padding:28px 32px;">
     <h1 style="margin:0;color:#fff;font-size:20px;font-weight:700;">📊 OLX Monitor</h1>
     <p style="margin:6px 0 0;color:#a8c8e8;font-size:13px;">
@@ -177,7 +181,6 @@ def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
 
   <div style="padding:28px 32px;">
 
-    <!-- PODSUMOWANIE TYGODNIA -->
     <h2 style="margin:0 0 16px;font-size:15px;color:#2c5f8a;text-transform:uppercase;
                letter-spacing:.5px;border-bottom:2px solid #2c5f8a;padding-bottom:8px;">
       Podsumowanie tygodnia
@@ -202,10 +205,9 @@ def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
       Usun. = usunięto &nbsp;|&nbsp; Netto = zmiana netto &nbsp;|&nbsp; Błędy = dni z błędem odczytu
     </p>
 
-    <!-- ANALIZA AI -->
     <h2 style="margin:0 0 12px;font-size:15px;color:#2c5f8a;text-transform:uppercase;
                letter-spacing:.5px;border-bottom:2px solid #2c5f8a;padding-bottom:8px;">
-      🤖 Analiza
+      🤖 Analiza AI
     </h2>
     <div style="background:#f0f4f8;border-left:4px solid #2c5f8a;padding:16px 20px;
                 border-radius:0 6px 6px 0;margin-bottom:28px;font-size:14px;
@@ -213,7 +215,6 @@ def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
       {analysis.replace(chr(10), '<br>')}
     </div>
 
-    <!-- ZESTAWIENIE DZIENNE -->
     <h2 style="margin:0 0 16px;font-size:15px;color:#2c5f8a;text-transform:uppercase;
                letter-spacing:.5px;border-bottom:2px solid #2c5f8a;padding-bottom:8px;">
       📅 Zestawienie dzienne
@@ -222,7 +223,6 @@ def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
 
   </div>
 
-  <!-- STOPKA -->
   <div style="background:#f0f4f8;padding:16px 32px;text-align:center;
               font-size:11px;color:#888;border-top:1px solid #e0e8f0;">
     Raport wygenerowany automatycznie przez OLX Monitor &nbsp;·&nbsp;
@@ -234,23 +234,22 @@ def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
 </html>"""
 
 
-# ─── ANALIZA AI (Google Gemini API) ──────────────────────────────────────────
+# ─── ANALIZA AI (Google Gemini) ───────────────────────────────────────────────
 
 def generate_ai_analysis(summary: dict, weekly_data: dict) -> str:
-    """Wysyła dane do Google Gemini API i zwraca analizę tekstową (5-10 zdań)."""
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
-        return "⚠  Analiza AI niedostępna – brak klucza GEMINI_API_KEY."
+        return "⚠ Analiza AI niedostępna – brak klucza GEMINI_API_KEY."
 
     data_for_ai = {}
     for profile, s in summary.items():
         data_for_ai[profile] = {
-            "stan_na_koniec_tygodnia":   s["last_count"],
-            "stan_na_poczatek_tygodnia": s["first_count"],
-            "laczna_liczba_nowych":      s["total_new"],
-            "laczna_liczba_usunietych":  s["total_deleted"],
-            "zmiana_netto":              s["net_week"],
-            "dni_monitorowania":         s["days_tracked"],
+            "stan_na_koniec":   s["last_count"],
+            "stan_na_poczatek": s["first_count"],
+            "nowe":             s["total_new"],
+            "usuniete":         s["total_deleted"],
+            "zmiana_netto":     s["net_week"],
+            "dni":              s["days_tracked"],
         }
 
     prompt = f"""Jesteś analitykiem rynku nieruchomości.
@@ -259,50 +258,62 @@ Poniżej masz tygodniowe dane z monitoringu ogłoszeń na OLX.pl (stancje i poko
 Dane z ostatnich 7 dni:
 {json.dumps(data_for_ai, ensure_ascii=False, indent=2)}
 
-Napisz zwięzłą analizę (5-10 zdań) po polsku. Uwzględnij:
+Napisz zwięzłą analizę (5-8 zdań) po polsku. Uwzględnij:
 - Ogólny trend na rynku pokoi w Lublinie (profil wszystkie-lublin)
-- Aktywność poszczególnych wynajmujących (artymiuk, poqui, stylowepokoje, villahome)
+- Aktywność poszczególnych wynajmujących
 - Czy rynek jest aktywny czy spokojny w tym tygodniu
-- Które profile są najbardziej aktywne i co to może oznaczać
-- Krótką rekomendację lub obserwację dla obserwującego rynek
+- Krótką rekomendację dla obserwującego rynek
 
-Pisz naturalnie, bez wypunktowań, jako spójny tekst analityczny."""
+Pisz naturalnie, bez wypunktowań, jako spójny tekst."""
 
-    try:
-        url  = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-        resp = requests.post(url, json={
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {"maxOutputTokens": 600, "temperature": 0.7},
-        }, timeout=30)
+    # Próbuj modele po kolei — od najtańszego
+    models = [
+        "gemini-2.0-flash-lite",
+        "gemini-1.5-flash-8b",
+        "gemini-1.5-flash",
+    ]
 
-        if not resp.ok:
-            print(f"  ⚠  Gemini API error {resp.status_code}: {resp.text}")
-            return f"⚠ Błąd API Gemini ({resp.status_code}): {resp.text[:200]}"
+    for model in models:
+        try:
+            url  = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            resp = requests.post(url, json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"maxOutputTokens": 500, "temperature": 0.7},
+            }, timeout=30)
 
-        return resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+            if resp.status_code == 429:
+                print(f"  ⚠  {model}: limit quota – próbuję kolejny model...")
+                continue
 
-    except Exception as e:
-        return f"⚠  Błąd generowania analizy AI: {e}"
+            if not resp.ok:
+                print(f"  ⚠  {model}: błąd {resp.status_code}")
+                continue
+
+            text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+            print(f"  ✓  Analiza AI wygenerowana przez {model}")
+            return text
+
+        except Exception as e:
+            print(f"  ⚠  {model}: wyjątek {e}")
+            continue
+
+    return "⚠ Analiza AI chwilowo niedostępna – wszystkie modele Gemini przekroczyły limit. Spróbuj ponownie za godzinę."
 
 
 # ─── WYSYŁANIE E-MAILA ───────────────────────────────────────────────────────
 
 def send_email(subject: str, html_body: str):
-    """Wysyła e-mail HTML przez Gmail SMTP."""
     gmail_password = os.environ.get("GMAIL_APP_PASSWORD", "")
     if not gmail_password:
         print("⚠  Brak GMAIL_APP_PASSWORD – e-mail nie zostanie wysłany.")
         return False
 
-    msg = MIMEMultipart("mixed")
+    msg            = MIMEMultipart("mixed")
     msg["Subject"] = subject
     msg["From"]    = SENDER_EMAIL
     msg["To"]      = RECIPIENT_EMAIL
-
-    # Część HTML
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    # Załącz plik Excel jeśli istnieje
     if os.path.exists(EXCEL_FILE):
         today           = datetime.now().strftime("%Y-%m-%d")
         attachment_name = f"OLX_Monitor_{today}.xlsx"
@@ -344,7 +355,6 @@ def send_weekly_report():
     subject = f"📊 OLX Monitor – raport tygodniowy {today}"
     html    = build_html_email(summary, weekly_data, analysis)
 
-    print("  ✉  Treść HTML wygenerowana, wysyłam...")
     send_email(subject, html)
 
 
