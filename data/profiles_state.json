@@ -54,7 +54,7 @@
         "title": "Mieszkanie z KLIMATYZACJĄ 5 minut od UMCS, UP, KUL - Długosza",
         "price": 2049,
         "url": "https://www.olx.pl/d/oferta/mieszkanie-z-klimatyzacja-5-minut-od-umcs-up-kul-dlugosza-CID3-ID18KAEc.html",
-        "status": "new",
+        "status": "existing",
         "created": "19.12.2025",
         "daysOld": 61,
         "date": "19 lut",
@@ -67,7 +67,7 @@
         "url": "https://www.olx.pl/d/oferta/przytulny-pokoj-blisko-politechniki-ul-przytulna-CID3-ID17NeTz.html",
         "status": "existing",
         "created": "10.10.2025",
-        "daysOld": 131,
+        "daysOld": 132,
         "date": "19 lut",
         "profile": "poqui"
       }
@@ -89,7 +89,7 @@
       {
         "date": "19 lut 2026",
         "total": 4,
-        "newCount": 1,
+        "newCount": 0,
         "goneCount": 0
       }
     ]
