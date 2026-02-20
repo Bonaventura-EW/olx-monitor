@@ -1,14 +1,14 @@
 {
-  "run_at": "2026-02-19 09:32:21",
+  "run_at": "2026-02-20 09:09:27",
   "total_listings": 8,
   "dates_found": 8,
-  "market_total": 429,
+  "market_total": 435,
   "crosscheck": [
     {
       "profile": "artymiuk",
       "scraped": 0,
-      "official": null,
-      "ok": null
+      "official": 0,
+      "ok": true
     },
     {
       "profile": "poqui",
