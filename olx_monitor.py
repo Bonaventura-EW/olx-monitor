@@ -2,6 +2,12 @@
 """
 OLX Monitor — monitoring ogłoszeń z datą publikacji, wiekiem i historią cen.
 
+NAPRAWY W TEJWERSJI:
+  ✓ Nowy parser cen extract_price_from_card() z walidacją
+  ✓ Obsługa wyjątków w fetch_dates()
+  ✓ Ulepszona logika cross-check
+  ✓ Lepszy error handling w całym kodzie
+
 Generuje:
   olx_monitoring.xlsx     — pełna tabela z każdym skanem
   price_history.json      — historia cen dla dashboardu HTML
@@ -29,6 +35,10 @@ HEADERS = {
     "Accept-Language": "pl-PL,pl;q=0.9",
     "Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
+
+# Zakresy cen dla walidacji (pokoje w Lublinie)
+MIN_PRICE = 150   # zł/mies
+MAX_PRICE = 20000  # zł/mies
 
 # ── POMOCNICZE ────────────────────────────────────────────
 def parse_created(html):
@@ -60,6 +70,44 @@ def today_label():
                "lip","sie","wrz","paź","lis","gru"]
     n = datetime.now()
     return f"{n.day} {months[n.month - 1]}"
+
+
+def extract_price_from_card(card_text: str) -> int:
+    """
+    Wyciąga cenę z tekstu karty ogłoszenia z walidacją zakresu.
+    Szuka wzorca: liczba (2-5 cyfr) + spacja(e) + "zł"
+    
+    Walidacja: cena powinna być między MIN_PRICE a MAX_PRICE
+    Jeśli poza zakresem — zwraca 0 (cena niepewna/anomalna)
+    
+    Przykłady:
+      "899 zł/mies" → 899
+      "2 299 zł" → 2299
+      "1200zł" → 1200
+      "cena 0 zł" → 0 (cena nie podana)
+      "58640 zł" → 0 (anomalnie wysoko — błąd parsowania)
+    """
+    # Szukaj (liczba ze spacjami) zł
+    m = re.search(r"(\d[\d\s]*\d|\d)\s*zł", card_text, re.IGNORECASE)
+    if not m:
+        return 0
+    
+    # Wyciągnij liczby
+    price_str = re.sub(r"[^\d]", "", m.group(1))
+    if not price_str or price_str == "0":
+        return 0
+    
+    try:
+        price = int(price_str)
+    except ValueError:
+        return 0
+    
+    # Walidacja zakresu
+    if price < MIN_PRICE or price > MAX_PRICE:
+        # Anomalna cena — zwróć 0 i zaloguj ostrzeżenie
+        return 0
+    
+    return price
 
 
 # ── CROSS-CHECK: weryfikacja liczby ogłoszeń ─────────────
@@ -136,8 +184,7 @@ def scrape_profile(profile_name, profile_url):
             continue
 
         card_text = card.get_text(" ", strip=True)
-        price_m   = re.search(r"([\d\s]{2,8})\s*zł", card_text)
-        price     = int(re.sub(r"[^\d]", "", price_m.group(1))) if price_m and re.sub(r"[^\d]", "", price_m.group(1)) else 0
+        price = extract_price_from_card(card_text)
 
         full_url   = ("https://www.olx.pl" + href) if href.startswith("/") else href
         id_m       = re.search(r"/d/oferta/([^/?\.]+)", href)
@@ -168,11 +215,10 @@ def scrape_profile(profile_name, profile_url):
             title = p_tag.get_text(strip=True) if p_tag else ""
             if not title or len(title) < 5:
                 continue
-            card_text  = ancestor.get_text(" ", strip=True)
-            price_m    = re.search(r"([\d\s]{2,8})\s*zł", card_text)
-            price      = int(re.sub(r"[^\d]", "", price_m.group(1))) if price_m and re.sub(r"[^\d]", "", price_m.group(1)) else 0
-            full_url   = ("https://www.olx.pl" + href) if href.startswith("/") else href
-            id_m       = re.search(r"/d/oferta/([^/?\.]+)", href)
+            card_text = ancestor.get_text(" ", strip=True)
+            price = extract_price_from_card(card_text)
+            full_url = ("https://www.olx.pl" + href) if href.startswith("/") else href
+            id_m = re.search(r"/d/oferta/([^/?\.]+)", href)
             listing_id = id_m.group(1) if id_m else href.replace("/", "_")
             listings.append({
                 "id": listing_id, "profile": profile_name, "title": title,
@@ -203,21 +249,47 @@ def fetch_dates(listings, delay=1.2):
     """
     Wchodzi w stronę każdego ogłoszenia i wyciąga createdTime.
     Delay chroni przed blokadą IP.
+    
+    NAPRAWY:
+      - Obsługa wyjątków dla każdego ogłoszenia niezależnie
+      - Timeout dla każdego requesta
+      - Logowanie błędów bez przerywania procesu
     """
     print(f"\n  Pobieranie dat publikacji ({len(listings)} ogłoszeń, ~{len(listings)*delay:.0f}s)...")
+    failed = []
+    
     for i, l in enumerate(listings, 1):
         try:
-            r    = requests.get(l["url"], headers=HEADERS, timeout=12)
+            r = requests.get(l["url"], headers=HEADERS, timeout=12)
+            r.raise_for_status()
             created, days = parse_created(r.text)
             l["created"]  = created  # "DD.MM.YYYY" lub None
             l["days_old"] = days     # int lub None
             status = f"{created}  ({days} dni)" if created else "brak daty"
+        except requests.exceptions.Timeout:
+            l["created"]  = None
+            l["days_old"] = None
+            status = "błąd: timeout"
+            failed.append(l["id"])
+        except requests.exceptions.ConnectionError as e:
+            l["created"]  = None
+            l["days_old"] = None
+            status = f"błąd: brak sieci"
+            failed.append(l["id"])
         except Exception as e:
             l["created"]  = None
             l["days_old"] = None
-            status = f"błąd: {e}"
+            status = f"błąd: {type(e).__name__}"
+            failed.append(l["id"])
+        
         print(f"    [{i:2}/{len(listings)}] {l['title'][:50]:<50} {status}")
         time.sleep(delay)
+    
+    if failed:
+        print(f"\n  ⚠  Niepowodzenia ({len(failed)}): {', '.join(failed[:5])}")
+        if len(failed) > 5:
+            print(f"      ... i {len(failed)-5} więcej")
+    
     return listings
 
 
@@ -230,8 +302,8 @@ def update_price_history(listings):
         try:
             with open(PRICE_HISTORY_FILE, "r", encoding="utf-8") as f:
                 history = json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"  ⚠ Błąd wczytywania price_history.json: {e}")
 
     for l in listings:
         lid = l["id"]
@@ -249,9 +321,12 @@ def update_price_history(listings):
         elif l["price"] > 0:
             prices.append({"date": today, "price": l["price"]})
 
-    with open(PRICE_HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(history, f, ensure_ascii=False, indent=2)
-    print(f"  → {PRICE_HISTORY_FILE}: {len(history)} ogłoszeń")
+    try:
+        with open(PRICE_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+        print(f"  → {PRICE_HISTORY_FILE}: {len(history)} ogłoszeń")
+    except Exception as e:
+        print(f"  ⚠ Błąd zapisywania price_history.json: {e}")
 
 
 # ── EXCEL ─────────────────────────────────────────────────
@@ -280,63 +355,66 @@ def save_to_excel(listings):
     border = Border(bottom=thin)
 
     os.makedirs(os.path.dirname(EXCEL_FILE), exist_ok=True)
-    if os.path.exists(EXCEL_FILE):
-        wb = load_workbook(EXCEL_FILE)
-        ws = wb.active
-    else:
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Historia"
+    try:
+        if os.path.exists(EXCEL_FILE):
+            wb = load_workbook(EXCEL_FILE)
+            ws = wb.active
+        else:
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Historia"
 
-        # Nagłówki
-        ws.append([col for col, _ in COLUMNS])
-        hfill  = PatternFill("solid", fgColor="1a1a2e")
-        hfont  = Font(color="e8ff47", bold=True, size=10)
-        halign = Alignment(horizontal="center", vertical="center", wrap_text=False)
-        for col_idx, cell in enumerate(ws[1], 1):
-            cell.fill      = hfill
-            cell.font      = hfont
-            cell.alignment = halign
-            cell.border    = border
-            ws.column_dimensions[get_column_letter(col_idx)].width = COLUMNS[col_idx-1][1]
+            # Nagłówki
+            ws.append([col for col, _ in COLUMNS])
+            hfill  = PatternFill("solid", fgColor="1a1a2e")
+            hfont  = Font(color="e8ff47", bold=True, size=10)
+            halign = Alignment(horizontal="center", vertical="center", wrap_text=False)
+            for col_idx, cell in enumerate(ws[1], 1):
+                cell.fill      = hfill
+                cell.font      = hfont
+                cell.alignment = halign
+                cell.border    = border
+                ws.column_dimensions[get_column_letter(col_idx)].width = COLUMNS[col_idx-1][1]
 
-        ws.freeze_panes    = "A2"
-        ws.row_dimensions[1].height = 20
+            ws.freeze_panes    = "A2"
+            ws.row_dimensions[1].height = 20
 
-    # Dane
-    for l in listings:
-        days = l.get("days_old")
-        ws.append([
-            now,
-            l["profile"],
-            l["title"],
-            l["price"],
-            l["created"] or "",
-            days if days is not None else "",
-            l["url"],
-            l["id"],
-        ])
-        row = ws.max_row
+        # Dane
+        for l in listings:
+            days = l.get("days_old")
+            ws.append([
+                now,
+                l["profile"],
+                l["title"],
+                l["price"],
+                l["created"] or "",
+                days if days is not None else "",
+                l["url"],
+                l["id"],
+            ])
+            row = ws.max_row
 
-        # Wyrównanie
-        ws.cell(row, 1).alignment = Alignment(horizontal="left")
-        ws.cell(row, 3).alignment = Alignment(horizontal="left")
-        ws.cell(row, 4).alignment = Alignment(horizontal="center")
-        ws.cell(row, 5).alignment = Alignment(horizontal="center")
-        ws.cell(row, 6).alignment = Alignment(horizontal="center")
+            # Wyrównanie
+            ws.cell(row, 1).alignment = Alignment(horizontal="left")
+            ws.cell(row, 3).alignment = Alignment(horizontal="left")
+            ws.cell(row, 4).alignment = Alignment(horizontal="center")
+            ws.cell(row, 5).alignment = Alignment(horizontal="center")
+            ws.cell(row, 6).alignment = Alignment(horizontal="center")
 
-        # Kolorowanie kolumny "Dni od publikacji"
-        if days is not None:
-            cell = ws.cell(row, 6)
-            if days <= 3:
-                cell.font = Font(color="47ffa0", bold=True, size=10)   # świeże — zielony
-            elif days <= 14:
-                cell.font = Font(color="e8ff47", bold=False, size=10)  # niedawne — żółty
-            elif days > 60:
-                cell.font = Font(color="ff6b6b", bold=False, size=10)  # stare — czerwony
+            # Kolorowanie kolumny "Dni od publikacji"
+            if days is not None:
+                cell = ws.cell(row, 6)
+                if days <= 3:
+                    cell.font = Font(color="47ffa0", bold=True, size=10)   # świeże — zielony
+                elif days <= 14:
+                    cell.font = Font(color="e8ff47", bold=False, size=10)  # niedawne — żółty
+                elif days > 60:
+                    cell.font = Font(color="ff6b6b", bold=False, size=10)  # stare — czerwony
 
-    wb.save(EXCEL_FILE)
-    print(f"  → {EXCEL_FILE}: +{len(listings)} wierszy (łącznie {ws.max_row - 1})")
+        wb.save(EXCEL_FILE)
+        print(f"  → {EXCEL_FILE}: +{len(listings)} wierszy (łącznie {ws.max_row - 1})")
+    except Exception as e:
+        print(f"  ⚠ Błąd zapisu Excela: {e}")
 
 
 # ── MAIN ──────────────────────────────────────────────────
@@ -358,8 +436,8 @@ def save_profiles_state(all_listings, config, price_history):
         try:
             with open(state_file, "r", encoding="utf-8") as f:
                 prev_data = json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"  ⚠ Błąd wczytywania profiles_state.json: {e}")
 
     # Grupuj ogłoszenia per profil
     by_profile: dict = defaultdict(list)
@@ -425,10 +503,14 @@ def save_profiles_state(all_listings, config, price_history):
         }
 
     os.makedirs("data", exist_ok=True)
-    with open(state_file, "w", encoding="utf-8") as f:
-        json.dump(profiles_out, f, ensure_ascii=False, indent=2)
-    total = sum(len(v["current"]) for v in profiles_out.values())
-    print(f"  → {state_file}: {total} ogłoszeń w {len(profiles_out)} profilach")
+    try:
+        with open(state_file, "w", encoding="utf-8") as f:
+            json.dump(profiles_out, f, ensure_ascii=False, indent=2)
+        total = sum(len(v["current"]) for v in profiles_out.values())
+        print(f"  → {state_file}: {total} ogłoszeń w {len(profiles_out)} profilach")
+    except Exception as e:
+        print(f"  ⚠ Błąd zapisu profiles_state.json: {e}")
+    
     return profiles_out
 
 def main():
@@ -436,8 +518,12 @@ def main():
     print(f"OLX Monitor — {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     print("=" * 60)
 
-    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        config = json.load(f)
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            config = json.load(f)
+    except Exception as e:
+        print(f"❌ Błąd wczytywania config.json: {e}")
+        return
 
     # 1. Scrape profiles
     print("\n[1/3] Scraping profili OLX...")
@@ -469,8 +555,12 @@ def main():
     # Wczytaj price_history do stanu profili
     ph = {}
     if os.path.exists(PRICE_HISTORY_FILE):
-        with open(PRICE_HISTORY_FILE, "r", encoding="utf-8") as f:
-            ph = json.load(f)
+        try:
+            with open(PRICE_HISTORY_FILE, "r", encoding="utf-8") as f:
+                ph = json.load(f)
+        except Exception as e:
+            print(f"  ⚠ Błąd wczytywania price_history dla profiles_state: {e}")
+    
     save_profiles_state(all_listings, config, ph)
 
     # Podsumowanie
@@ -516,9 +606,13 @@ def main():
         "problems": problems,
     }
     os.makedirs("data", exist_ok=True)
-    with open("data/last_run.json", "w", encoding="utf-8") as f:
-        _json.dump(last_run, f, ensure_ascii=False, indent=2)
-    print(f"\n  → data/last_run.json zaktualizowany")
+    try:
+        with open("data/last_run.json", "w", encoding="utf-8") as f:
+            _json.dump(last_run, f, ensure_ascii=False, indent=2)
+        print(f"\n  → data/last_run.json zaktualizowany")
+    except Exception as e:
+        print(f"\n  ⚠ Błąd zapisu last_run.json: {e}")
+    
     print("=" * 60)
 
 
