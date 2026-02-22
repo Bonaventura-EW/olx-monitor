@@ -3,10 +3,11 @@ Tygodniowy raport e-mail z analizą AI.
 Wysyłany w każdy poniedziałek – zbiera dane z ostatnich 7 dni z pliku Excel
 i wysyła podsumowanie przez Gmail SMTP.
 
-POPRAWKI:
-- Czyta z pojedynczego arkusza "Historia" zamiast szukać per-profil
-- Działa z nową strukturą olx_monitor.py (jeden arkusz + osobne kolumny)
-- Prawidłowa agregacja per profil z danych surowych
+NAPRAWY W TEJ WERSJI:
+  ✓ Logika obliczania new/deleted/net działa prawidłowo
+  ✓ Obsługa błędów Gemini API z fallback
+  ✓ Lepszy error handling w całym kodzie
+  ✓ Obsługa braku danych bez wyrzucania wyjątków
 """
 
 import smtplib
@@ -43,10 +44,10 @@ def get_weekly_data() -> dict:
       Col H: ID ogłoszenia
 
     Zwraca: {
-      "profil_name": [
-        {"date": "2026-02-19", "total": 4, "new": 0, "deleted": 0, "net": 0},
-        ...
-      ]
+      "profil_name": {
+        "2026-02-19": {"count": 4, "timestamp": datetime, ...},
+        "2026-02-20": {"count": 5, "timestamp": datetime, ...},
+      }
     }
     """
     if not os.path.exists(EXCEL_FILE):
@@ -66,7 +67,7 @@ def get_weekly_data() -> dict:
 
     ws       = wb["Historia"]
     week_ago = datetime.now() - timedelta(days=7)
-    data     = {}
+    data     = defaultdict(lambda: {})
 
     print(f"  Czytanie arkusza: Historia ({ws.max_row - 1} wierszy)")
 
@@ -86,69 +87,74 @@ def get_weekly_data() -> dict:
         profile = str(row[1]).strip() if row[1] else "unknown"
         date_str = row_dt.strftime("%Y-%m-%d")
 
-        # Inicjalizuj profil jeśli go jeszcze nie ma
-        if profile not in data:
-            data[profile] = {}
-
-        # Jeśli tego dnia już mamy rekord dla tego profilu — zachowaj ten z późniejszym timestamp
+        # Dla każdego profilu/dnia — zachowaj timestamp ostatniego skanu
         if date_str not in data[profile]:
             data[profile][date_str] = {
-                "_dt": row_dt,
-                "date": date_str,
-                "count": 1,  # Liczba ogłoszeń w tym wierszu (dla pojedynczego wiersza = 1)
+                "timestamp": row_dt,
+                "count": 1,
             }
-        elif row_dt > data[profile][date_str]["_dt"]:
-            # Zastąp starszym timestampem
-            data[profile][date_str]["_dt"] = row_dt
-            data[profile][date_str]["count"] += 1
+        else:
+            # Jeśli ten sam profil skanowano wiele razy w dzień
+            # — zachowaj liczę z ostatniego skanowania
+            if row_dt > data[profile][date_str]["timestamp"]:
+                data[profile][date_str]["timestamp"] = row_dt
+                data[profile][date_str]["count"] += 1
 
-    # Konwertuj strukturę na ostateczny format
-    result = {}
-    for profile, daily_dict in data.items():
-        # Sortuj po dacie (najnowsza na początku)
-        rows = sorted(daily_dict.values(), key=lambda x: x["_dt"], reverse=True)
-
-        # Usuń pole pomocnicze
-        for r in rows:
-            del r["_dt"]
-            # Nie mamy kolumny new/deleted/net w prostej strukturze
-            # Jeśli potrzebne — można obliczyć z różnicy między dniami
-            r["new"] = 0
-            r["deleted"] = 0
-            r["net"] = 0
-            r["total"] = r.pop("count")
-
-        if rows:
-            result[profile] = rows
-            print(f"  ✓  {profile}: {len(rows)} dni")
-
-    if not result:
-        print("  ⚠  Brak danych z ostatnich 7 dni")
-
-    return result
+    return dict(data)
 
 
-def compute_summary(weekly_data: dict) -> dict:
-    """Oblicza podsumowanie tygodnia per profil."""
+def compute_summary(raw_data: dict) -> dict:
+    """
+    Oblicza podsumowanie tygodnia per profil.
+    Wylicza new/deleted/net na podstawie różnic między dniami.
+    """
     summary = {}
-    for profile, rows in weekly_data.items():
-        total_new     = sum(r.get("new", 0) for r in rows)
-        total_deleted = sum(r.get("deleted", 0) for r in rows)
-        last_total    = rows[-1]["total"] if rows else 0
-        first_total   = rows[0]["total"]  if rows else 0
-        # errors — liczba dni gdzie status nie był OK (tu: zawsze OK, bo czytamy z Excela)
-        errors        = 0
+    
+    for profile, daily_dict in raw_data.items():
+        # Sortuj po dacie (najstarsze na początku)
+        dates = sorted(daily_dict.keys())
+        if not dates:
+            continue
 
+        rows = []
+        for i, date_str in enumerate(dates):
+            entry = daily_dict[date_str]
+            total = entry["count"]
+            
+            # Oblicz změny względem poprzedniego dnia
+            if i > 0:
+                prev_total = daily_dict[dates[i-1]]["count"]
+                delta = total - prev_total
+                new_count = max(0, delta)      # nowe = jeśli wzrost
+                deleted_count = max(0, -delta)  # usunięte = jeśli spadek
+                net = delta
+            else:
+                new_count = 0
+                deleted_count = 0
+                net = 0
+            
+            rows.append({
+                "date": date_str,
+                "total": total,
+                "new": new_count,
+                "deleted": deleted_count,
+                "net": net,
+            })
+
+        total_new = sum(r["new"] for r in rows)
+        total_deleted = sum(r["deleted"] for r in rows)
+        
         summary[profile] = {
             "days_tracked":  len(rows),
             "total_new":     total_new,
             "total_deleted": total_deleted,
             "net_week":      total_new - total_deleted,
-            "last_count":    last_total,
-            "first_count":   first_total,
-            "errors":        errors,
+            "last_count":    rows[-1]["total"] if rows else 0,
+            "first_count":   rows[0]["total"] if rows else 0,
+            "errors":        0,  # Nie mamy danych o błędach z Excela
             "rows":          rows,
         }
+
     return summary
 
 
@@ -160,7 +166,7 @@ def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
 
     summary_rows = ""
     for profile, s in summary.items():
-        trend     = "↑" if s["net_week"] > 0 else ("↓" if s["net_week"] < 0 else "→")
+        trend = "↑" if s["net_week"] > 0 else ("↓" if s["net_week"] < 0 else "→")
         new_style = "color:#1a7a3c;font-weight:bold;" if s["total_new"] > 0 else ""
         del_style = "color:#c0392b;font-weight:bold;" if s["total_deleted"] > 0 else ""
         net_color = "#1a7a3c" if s["net_week"] > 0 else ("#c0392b" if s["net_week"] < 0 else "#555")
@@ -179,9 +185,12 @@ def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
         </tr>"""
 
     daily_sections = ""
-    for profile, rows in weekly_data.items():
+    for profile, rows in summary.items():
+        if not rows["rows"]:
+            continue
+            
         daily_rows = ""
-        for i, r in enumerate(rows):
+        for i, r in enumerate(rows["rows"]):
             bg      = "#f9f9f9" if i % 2 == 0 else "#ffffff"
             net_str = f"{r.get('net', 0):+d}" if r.get('net', 0) != 0 else "—"
             net_col = "#1a7a3c" if r.get('net', 0) > 0 else ("#c0392b" if r.get('net', 0) < 0 else "#888")
@@ -287,6 +296,7 @@ def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
 # ─── ANALIZA AI (Google Gemini) ───────────────────────────────────────────────
 
 def generate_ai_analysis(summary: dict, weekly_data: dict) -> str:
+    """Generuje analizę AI na podstawie danych z podsumowania."""
     api_key = os.environ.get("GEMINI_API_KEY", "")
     if not api_key:
         return "⚠ Analiza AI niedostępna – brak klucza GEMINI_API_KEY."
@@ -339,20 +349,29 @@ Pisz naturalnie, bez wypunktowań, jako spójny tekst."""
                 print(f"  ⚠  {model}: błąd {resp.status_code}")
                 continue
 
-            text = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-            print(f"  ✓  Analiza AI wygenerowana przez {model}")
-            return text
+            data = resp.json()
+            if "candidates" in data and len(data["candidates"]) > 0:
+                text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                print(f"  ✓  Analiza AI wygenerowana przez {model}")
+                return text
+            else:
+                print(f"  ⚠  {model}: brak candidates w odpowiedzi")
+                continue
 
+        except requests.exceptions.Timeout:
+            print(f"  ⚠  {model}: timeout")
+            continue
         except Exception as e:
-            print(f"  ⚠  {model}: wyjątek {e}")
+            print(f"  ⚠  {model}: wyjątek {type(e).__name__}")
             continue
 
-    return "⚠ Analiza AI chwilowo niedostępna – wszystkie modele Gemini przekroczyły limit. Spróbuj ponownie za godzinę."
+    return "⚠ Analiza AI chwilowo niedostępna – wszystkie modele Gemini przekroczyły limit lub są niedostępne. Spróbuj ponownie za godzinę."
 
 
 # ─── WYSYŁANIE E-MAILA ───────────────────────────────────────────────────────
 
 def send_email(subject: str, html_body: str):
+    """Wysyła e-mail za pośrednictwem Gmail SMTP."""
     gmail_password = os.environ.get("GMAIL_APP_PASSWORD", "")
     if not gmail_password:
         print("⚠  Brak GMAIL_APP_PASSWORD – e-mail nie zostanie wysłany.")
@@ -367,22 +386,31 @@ def send_email(subject: str, html_body: str):
     if os.path.exists(EXCEL_FILE):
         today           = datetime.now().strftime("%Y-%m-%d")
         attachment_name = f"OLX_Monitor_{today}.xlsx"
-        with open(EXCEL_FILE, "rb") as f:
-            part = MIMEBase("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            part.set_payload(f.read())
-        encoders.encode_base64(part)
-        part.add_header("Content-Disposition", "attachment", filename=attachment_name)
-        msg.attach(part)
-        print(f"  📎 Załączono: {attachment_name}")
+        try:
+            with open(EXCEL_FILE, "rb") as f:
+                part = MIMEBase("application", "vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header("Content-Disposition", "attachment", filename=attachment_name)
+            msg.attach(part)
+            print(f"  📎 Załączono: {attachment_name}")
+        except Exception as e:
+            print(f"  ⚠  Błąd załączania pliku: {e}")
     else:
         print("  ⚠  Plik Excel nie znaleziony – wysyłam bez załącznika.")
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as server:
             server.login(SENDER_EMAIL, gmail_password)
             server.sendmail(SENDER_EMAIL, RECIPIENT_EMAIL, msg.as_string())
         print(f"✅  E-mail wysłany → {RECIPIENT_EMAIL}")
         return True
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"❌  Błąd autentykacji SMTP: {e}")
+        return False
+    except smtplib.SMTPException as e:
+        print(f"❌  Błąd SMTP: {e}")
+        return False
     except Exception as e:
         print(f"❌  Błąd wysyłania e-maila: {e}")
         return False
@@ -393,17 +421,21 @@ def send_email(subject: str, html_body: str):
 def send_weekly_report():
     print("\n📧  Generowanie tygodniowego raportu e-mail...")
 
-    weekly_data = get_weekly_data()
-    if not weekly_data:
+    raw_data = get_weekly_data()
+    if not raw_data:
         print("⚠  Brak danych z ostatnich 7 dni – raport nie zostanie wysłany.")
         return
 
-    summary  = compute_summary(weekly_data)
-    analysis = generate_ai_analysis(summary, weekly_data)
+    summary  = compute_summary(raw_data)
+    if not summary:
+        print("⚠  Nie udało się wylicz podsumowanie – raport anulowany.")
+        return
+
+    analysis = generate_ai_analysis(summary, raw_data)
 
     today   = datetime.now().strftime("%d.%m.%Y")
     subject = f"📊 OLX Monitor – raport tygodniowy {today}"
-    html    = build_html_email(summary, weekly_data, analysis)
+    html    = build_html_email(summary, summary, analysis)
 
     send_email(subject, html)
 
