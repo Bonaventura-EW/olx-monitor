@@ -32,11 +32,41 @@ jobs:
 
       - name: Zainstaluj zależności
         run: pip install -r requirements.txt
+        continue-on-error: false
 
-      - name: Uruchom OLX Monitor (scraping)
+      - name: Uruchom OLX Monitor (scraping) – attempt 1
+        id: scrape_1
         run: python olx_monitor.py
+        continue-on-error: true
 
-      - name: Wyślij tygodniowy raport e-mail
+      - name: Uruchom OLX Monitor (scraping) – attempt 2 (retry)
+        id: scrape_2
+        if: steps.scrape_1.outcome == 'failure'
+        run: |
+          echo "⚠  Pierwszy attempt nie powiódł się – retry..."
+          sleep 30
+          python olx_monitor.py
+        continue-on-error: true
+
+      - name: Sprawdź czy scraping powiódł się
+        if: steps.scrape_1.outcome == 'failure' && steps.scrape_2.outcome == 'failure'
+        run: |
+          echo "❌ OLX Monitor nie powiódł się po 2 próbach"
+          exit 1
+
+      - name: Weryfikuj czy pliki danych zostały utworzone
+        run: |
+          if [ ! -f data/last_run.json ]; then
+            echo "❌ Błąd: brak data/last_run.json – scraping nie powiódł się"
+            exit 1
+          fi
+          if [ ! -f data/price_history.json ]; then
+            echo "❌ Błąd: brak data/price_history.json"
+            exit 1
+          fi
+          echo "✅ Wszystkie pliki danych zostały utworzone"
+
+      - name: Wyślij tygodniowy raport e-mail (poniedziałek)
         run: |
           DAY=$(date +%u)
           FORCE="${{ github.event.inputs.force_email }}"
@@ -49,107 +79,176 @@ jobs:
         env:
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        continue-on-error: true
 
       - name: Pokaż wyniki (summary)
+        if: always()
         run: |
           echo "## 📊 OLX Monitor – wyniki $(date +'%Y-%m-%d')" >> $GITHUB_STEP_SUMMARY
           if [ -f data/last_run.json ]; then
             echo '```json' >> $GITHUB_STEP_SUMMARY
             cat data/last_run.json >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠ Brak data/last_run.json" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Zaktualizuj dashboard (wstrzyknij świeże dane do HTML)
         run: |
-          # BŁĄD 13: Sprawdź istnienie plików przed przetwarzaniem
+          # WALIDACJA: Sprawdź istnienie plików przed przetwarzaniem
           if [ ! -f olx_dashboard.html ]; then
             echo "⚠  Brak olx_dashboard.html – pomijam aktualizację dashboard"
             exit 0
           fi
           
-          if [ -f data/price_history.json ]; then
-            python - << 'PYEOF'
-          import json, re, os
-
-          # Wczytaj price_history
-          with open("data/price_history.json", "r", encoding="utf-8") as f:
-              history = json.load(f)
-
-          # Wczytaj market_total z last_run.json
-          market_total = None
-          if os.path.exists("data/last_run.json"):
-              with open("data/last_run.json", "r", encoding="utf-8") as f:
-                  last_run = json.load(f)
-              market_total = last_run.get("market_total")
-
-          with open("olx_dashboard.html", "r", encoding="utf-8") as f:
-              html = f.read()
-
-          # Wstrzyknij PRICE_HISTORY
-          inject_ph = f"window.__PRICE_HISTORY__ = {json.dumps(history, ensure_ascii=False)};"
-          if "window.__PRICE_HISTORY__" in html:
-              html = re.sub(
-                  r"window\.__PRICE_HISTORY__\s*=\s*\{.*?\};",
-                  inject_ph,
-                  html, flags=re.DOTALL
-              )
-          else:
-              html = html.replace("</script>", "\n" + inject_ph + "\n</script>", 1)
-
-          # Wstrzyknij MARKET_TOTAL
-          if market_total is not None:
-              inject_mt = f"window.__MARKET_TOTAL__ = {market_total};"
-              if "window.__MARKET_TOTAL__" in html:
-                  html = re.sub(r"window\.__MARKET_TOTAL__\s*=\s*\d+;", inject_mt, html)
-              else:
-                  html = html.replace("</script>", "\n" + inject_mt + "\n</script>", 1)
-
-          # Wstrzyknij LAST_RUN (czas ostatniego skanu)
-          if os.path.exists("data/last_run.json"):
-              with open("data/last_run.json", "r", encoding="utf-8") as f_lr:
-                  last_run_data = json.load(f_lr)
-              run_at = last_run_data.get("run_at", "")
-              if run_at:
-                  inject_lr = f'window.__LAST_RUN__ = "{run_at}";'
-                  if "window.__LAST_RUN__" in html:
-                      html = re.sub(r'window\.__LAST_RUN__\s*=\s*[^;]+;', inject_lr, html)
-                  else:
-                      html = html.replace("</script>", "\n" + inject_lr + "\n</script>", 1)
-
-          # BŁĄD 12: Wstrzyknij PROFILES_DATA z poprawioną obsługą wieloliniowego JSON
-          if os.path.exists("data/profiles_state.json"):
-              with open("data/profiles_state.json", "r", encoding="utf-8") as f_ps:
-                  profiles_state = json.load(f_ps)
-              inject_pd = f"window.__PROFILES_DATA__ = {json.dumps(profiles_state, ensure_ascii=False)};"
-              
-              if "window.__PROFILES_DATA__" in html:
-                  # Użyj DOTALL do obsługi wieloliniowego JSON
-                  html = re.sub(
-                      r"window\.__PROFILES_DATA__\s*=\s*(?:null|\{.*?\});",
-                      inject_pd,
-                      html,
-                      flags=re.DOTALL
-                  )
-                  
-                  # FALLBACK: Jeśli regex nie zadziałał (wielopoziomowy JSON)
-                  if inject_pd not in html and "window.__PROFILES_DATA__" in html:
-                      # Znajdź początek i koniec deklaracji
-                      start = html.find("window.__PROFILES_DATA__ = ")
-                      if start != -1:
-                          end = html.find(";", start)
-                          if end != -1:
-                              html = html[:start] + inject_pd + html[end+1:]
-              else:
-                  html = html.replace("</script>", "\n" + inject_pd + "\n</script>", 1)
-
-          with open("olx_dashboard.html", "w", encoding="utf-8") as f:
-              f.write(html)
-
-          print(f"✅ Dashboard zaktualizowany — {len(history)} ogłoszeń, rynek OLX: {market_total}")
-          PYEOF
-          else
+          if [ ! -f data/price_history.json ]; then
             echo "⚠  Brak data/price_history.json – dashboard bez wstrzykniętych danych"
+            exit 0
           fi
+
+          python - << 'PYEOF'
+import json, re, os, sys
+
+try:
+    # Wczytaj price_history
+    with open("data/price_history.json", "r", encoding="utf-8") as f:
+        history = json.load(f)
+    print(f"✓ Wczytano price_history.json: {len(history)} ogłoszeń")
+except Exception as e:
+    print(f"❌ Błąd wczytywania price_history.json: {e}")
+    sys.exit(1)
+
+try:
+    # Wczytaj market_total z last_run.json
+    market_total = None
+    if os.path.exists("data/last_run.json"):
+        with open("data/last_run.json", "r", encoding="utf-8") as f:
+            last_run = json.load(f)
+        market_total = last_run.get("market_total")
+    print(f"✓ Market total: {market_total}")
+except Exception as e:
+    print(f"⚠  Błąd wczytywania last_run.json: {e}")
+    market_total = None
+
+try:
+    with open("olx_dashboard.html", "r", encoding="utf-8") as f:
+        html = f.read()
+    print(f"✓ Wczytano olx_dashboard.html: {len(html)} bajtów")
+except Exception as e:
+    print(f"❌ Błąd wczytywania olx_dashboard.html: {e}")
+    sys.exit(1)
+
+# ──────────────────────────────────────────────────────
+# Wstrzyknij PRICE_HISTORY
+# ──────────────────────────────────────────────────────
+inject_ph = f"window.__PRICE_HISTORY__ = {json.dumps(history, ensure_ascii=False)};"
+
+if "window.__PRICE_HISTORY__" in html:
+    # Istniejący marker — zastąp
+    pattern = r"window\.__PRICE_HISTORY__\s*=\s*(?:\{.*?\}|null);?"
+    html_new = re.sub(pattern, inject_ph, html, count=1, flags=re.DOTALL)
+    if html_new != html:
+        html = html_new
+        print("✓ Price history zaktualizowana (istniejący marker)")
+    else:
+        print("⚠  Nie udało się zaktualizować istniejącego markera — dodaję nowy")
+        # Fallback: dodaj przed </script>
+        if "</script>" in html:
+            html = html.replace("</script>", f"\n{inject_ph}\n</script>", 1)
+            print("✓ Price history dodana (fallback)")
+else:
+    # Nowy marker — dodaj
+    if "</script>" in html:
+        html = html.replace("</script>", f"\n{inject_ph}\n</script>", 1)
+        print("✓ Price history dodana (nowy marker)")
+
+# ──────────────────────────────────────────────────────
+# Wstrzyknij MARKET_TOTAL
+# ──────────────────────────────────────────────────────
+if market_total is not None:
+    inject_mt = f"window.__MARKET_TOTAL__ = {market_total};"
+    
+    if "window.__MARKET_TOTAL__" in html:
+        html = re.sub(
+            r"window\.__MARKET_TOTAL__\s*=\s*\d+;?",
+            inject_mt,
+            html,
+            count=1
+        )
+        print("✓ Market total zaktualizowany")
+    else:
+        if "</script>" in html:
+            html = html.replace("</script>", f"\n{inject_mt}\n</script>", 1)
+            print("✓ Market total dodany")
+
+# ──────────────────────────────────────────────────────
+# Wstrzyknij LAST_RUN (czas ostatniego skanu)
+# ──────────────────────────────────────────────────────
+try:
+    if os.path.exists("data/last_run.json"):
+        with open("data/last_run.json", "r", encoding="utf-8") as f_lr:
+            last_run_data = json.load(f)
+        run_at = last_run_data.get("run_at", "")
+        if run_at:
+            inject_lr = f'window.__LAST_RUN__ = "{run_at}";'
+            if "window.__LAST_RUN__" in html:
+                html = re.sub(
+                    r'window\.__LAST_RUN__\s*=\s*"[^"]*";?',
+                    inject_lr,
+                    html,
+                    count=1
+                )
+                print("✓ Last run zaktualizowany")
+            else:
+                if "</script>" in html:
+                    html = html.replace("</script>", f"\n{inject_lr}\n</script>", 1)
+                    print("✓ Last run dodany")
+except Exception as e:
+    print(f"⚠  Błąd wstrzykiwania LAST_RUN: {e}")
+
+# ──────────────────────────────────────────────────────
+# Wstrzyknij PROFILES_DATA (obsługa wieloliniowego JSON)
+# ──────────────────────────────────────────────────────
+try:
+    if os.path.exists("data/profiles_state.json"):
+        with open("data/profiles_state.json", "r", encoding="utf-8") as f_ps:
+            profiles_state = json.load(f_ps)
+        inject_pd = f"window.__PROFILES_DATA__ = {json.dumps(profiles_state, ensure_ascii=False)};"
+        
+        if "window.__PROFILES_DATA__" in html:
+            # Najlepiej: znajdź dokładne granice zmiennej
+            start = html.find("window.__PROFILES_DATA__ = ")
+            if start != -1:
+                # Szukaj końca (";")
+                search_from = start + len("window.__PROFILES_DATA__ = ")
+                end = html.find(";", search_from)
+                if end != -1:
+                    # Zamień zawartość między "= " a ";"
+                    html = html[:start] + f"window.__PROFILES_DATA__ = {json.dumps(profiles_state, ensure_ascii=False)};" + html[end+1:]
+                    print("✓ Profiles data zaktualizowana (precyzyjnie)")
+                else:
+                    print("⚠  Nie znaleziono końca PROFILES_DATA")
+            else:
+                print("⚠  Nie znaleziono początku PROFILES_DATA")
+        else:
+            # Nowy marker
+            if "</script>" in html:
+                html = html.replace("</script>", f"\n{inject_pd}\n</script>", 1)
+                print("✓ Profiles data dodana (nowy marker)")
+except Exception as e:
+    print(f"⚠  Błąd wstrzykiwania PROFILES_DATA: {e}")
+
+# ──────────────────────────────────────────────────────
+# Zapisz zaktualizowany HTML
+# ──────────────────────────────────────────────────────
+try:
+    with open("olx_dashboard.html", "w", encoding="utf-8") as f:
+        f.write(html)
+    print(f"✅ Dashboard zaktualizowany – {len(history)} ogłoszeń, rynek: {market_total}")
+except Exception as e:
+    print(f"❌ Błąd zapisu dashboard: {e}")
+    sys.exit(1)
+PYEOF
 
       - name: Zapisz dane do repozytorium
         run: |
@@ -160,7 +259,34 @@ jobs:
           git add data/profiles_state.json     || true
           git add data/last_run.json           || true
           git add olx_dashboard.html           || true
-          git diff --cached --quiet && echo "Brak zmian do zapisania" && exit 0
+          
+          # Sprawdź czy są zmiany
+          if git diff --cached --quiet; then
+            echo "ℹ  Brak zmian do zapisania"
+            exit 0
+          fi
+          
           git commit -m "📊 OLX Monitor $(date +'%Y-%m-%d %H:%M')"
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Bonaventura-EW/olx-monitor.git
-          git push origin main
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          
+          # Push z retry
+          for attempt in 1 2 3; do
+            echo "Push attempt $attempt..."
+            if git push origin main; then
+              echo "✅ Push powiódł się"
+              exit 0
+            fi
+            if [ $attempt -lt 3 ]; then
+              echo "⚠  Push failed, retry za 10s..."
+              sleep 10
+            fi
+          done
+          
+          echo "❌ Push failed po 3 próbach"
+          exit 1
+
+      - name: Notyfikacja w przypadku błędu
+        if: failure()
+        run: |
+          echo "❌ Workflow nie powiódł się"
+          echo "Sprawdź logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
