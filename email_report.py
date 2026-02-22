@@ -23,20 +23,19 @@ EXCEL_FILE      = "data/olx_monitoring.xlsx"
 
 # Nazwy zakładek w Excelu — muszą być identyczne z config.json
 PROFILES = [
-    "wszystkie-lublin",
     "artymiuk",
     "poqui",
-    "pokojewlublinie",   # było: stylowepokoje
+    "pokojewlublinie",
     "villahome",
-    "dawnypatron",       # nowy profil
+    "dawnypatron",
 ]
 
 # ─── ZBIERANIE DANYCH Z EXCELA ───────────────────────────────────────────────
 
 def get_weekly_data() -> dict:
     """
-    Odczytuje dane z ostatnich 7 dni z każdej zakładki Excela.
-    - Jeden rekord na dzień (ostatni skan z danego dnia)
+    Odczytuje dane z ostatnich 7 dni z Excela - zakładka "Historia".
+    - Grupuje po profilu i dacie (jeden rekord na dzień/profil)
     - Posortowane od najnowszej do najstarszej daty
     """
     if not os.path.exists(EXCEL_FILE):
@@ -47,51 +46,103 @@ def get_weekly_data() -> dict:
     week_ago = datetime.now() - timedelta(days=7)
     data     = {}
 
-    print(f"  Zakładki w Excelu: {wb.sheetnames}")
+    # Excel ma jedną zakładkę "Historia" z wszystkimi profilami
+    ws_name = "Historia"
+    if ws_name not in wb.sheetnames:
+        print(f"  ⚠  Brak zakładki '{ws_name}' w Excelu – pomijam")
+        return {}
 
-    for profile in PROFILES:
-        if profile not in wb.sheetnames:
-            print(f"  ⚠  Brak zakładki '{profile}' w Excelu – pomijam")
+    ws = wb[ws_name]
+    print(f"  ✓  Czytam zakładkę: {ws_name}")
+
+    # Słownik: profil -> { data_str -> ostatni rekord z tego dnia }
+    profile_data = {}
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        if not row[0] or not row[1]:  # Data skanu, Profil
+            continue
+        try:
+            # row[0] = Data skanu, row[1] = Profil
+            row_dt  = datetime.strptime(str(row[0])[:16], "%Y-%m-%d %H:%M")
+            profile = str(row[1])
+        except Exception:
             continue
 
-        ws = wb[profile]
-        # Słownik: data_str -> ostatni rekord z tego dnia (najwyższy timestamp)
-        daily: dict = {}
+        if row_dt < week_ago:
+            continue
 
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if not row[0]:
-                continue
-            try:
-                row_dt = datetime.strptime(str(row[0])[:16], "%Y-%m-%d %H:%M")
-            except Exception:
-                continue
+        if profile not in profile_data:
+            profile_data[profile] = {}
 
-            if row_dt < week_ago:
-                continue
+        date_str = row_dt.strftime("%Y-%m-%d")
 
-            date_str = row_dt.strftime("%Y-%m-%d")
-            # Zachowaj tylko ostatni (największy timestamp) z danego dnia
-            if date_str not in daily or row_dt > daily[date_str]["_dt"]:
-                daily[date_str] = {
-                    "_dt":     row_dt,
-                    "date":    date_str,
-                    "total":   row[1] or 0,
-                    "new":     row[2] or 0,
-                    "deleted": row[3] or 0,
-                    "net":     row[4] or 0,
-                    "status":  row[7] or "?",
-                }
-
-        if daily:
-            # Sortuj od najnowszej do najstarszej
-            rows = sorted(daily.values(), key=lambda x: x["_dt"], reverse=True)
-            # Usuń pomocnicze pole _dt
-            for r in rows:
-                del r["_dt"]
-            data[profile] = rows
-            print(f"  ✓  {profile}: {len(rows)} dni, najnowszy: {rows[0]['date']}")
+        # Dla każdego profilu/dnia liczymy statystyki z price_history i profiles_state
+        # Tutaj tylko zbieramy daty które wystąpiły
+        if date_str not in profile_data[profile]:
+            profile_data[profile][date_str] = {
+                "_dt":     row_dt,
+                "date":    date_str,
+                "status":  "OK",
+            }
         else:
-            print(f"  –  {profile}: brak danych z ostatnich 7 dni")
+            # Zachowaj najnowszy timestamp z danego dnia
+            if row_dt > profile_data[profile][date_str]["_dt"]:
+                profile_data[profile][date_str]["_dt"] = row_dt
+
+    # Oblicz statystyki z profiles_state.json
+    if os.path.exists("data/profiles_state.json"):
+        with open("data/profiles_state.json", "r", encoding="utf-8") as f:
+            profiles_state = json.load(f)
+
+        for profile, dates_dict in profile_data.items():
+            if profile not in profiles_state:
+                continue
+
+            prof_data = profiles_state[profile]
+            history   = prof_data.get("history", [])
+
+            # Mapowanie: data_str -> history entry
+            history_map = {}
+            for h in history:
+                # Format "17 lut 2026" -> "2026-02-17"
+                try:
+                    date_parts = h["date"].split()
+                    if len(date_parts) == 3:
+                        day = int(date_parts[0])
+                        month_map = {
+                            'sty': 1, 'lut': 2, 'mar': 3, 'kwi': 4,
+                            'maj': 5, 'cze': 6, 'lip': 7, 'sie': 8,
+                            'wrz': 9, 'paź': 10, 'lis': 11, 'gru': 12
+                        }
+                        month = month_map.get(date_parts[1].lower(), 1)
+                        year  = int(date_parts[2])
+                        norm_date = f"{year:04d}-{month:02d}-{day:02d}"
+                        history_map[norm_date] = h
+                except Exception:
+                    pass
+
+            # Uzupełnij statystyki
+            for date_str, entry in dates_dict.items():
+                if date_str in history_map:
+                    h = history_map[date_str]
+                    entry["total"]   = h.get("total", 0)
+                    entry["new"]     = h.get("newCount", 0)
+                    entry["deleted"] = h.get("goneCount", 0)
+                    entry["net"]     = entry["new"] - entry["deleted"]
+                else:
+                    entry["total"]   = 0
+                    entry["new"]     = 0
+                    entry["deleted"] = 0
+                    entry["net"]     = 0
+
+    # Przekształć do formatu wyjściowego
+    for profile, dates_dict in profile_data.items():
+        rows = sorted(dates_dict.values(), key=lambda x: x["_dt"], reverse=True)
+        # Usuń pomocnicze pole _dt
+        for r in rows:
+            del r["_dt"]
+        data[profile] = rows
+        print(f"  ✓  {profile}: {len(rows)} dni, najnowszy: {rows[0]['date']}")
 
     return data
 
@@ -99,11 +150,11 @@ def get_weekly_data() -> dict:
 def compute_summary(weekly_data: dict) -> dict:
     summary = {}
     for profile, rows in weekly_data.items():
-        total_new     = sum(r["new"]     for r in rows)
-        total_deleted = sum(r["deleted"] for r in rows)
-        last_total    = rows[-1]["total"] if rows else 0
-        first_total   = rows[0]["total"]  if rows else 0
-        errors        = sum(1 for r in rows if r["status"] != "OK")
+        total_new     = sum(r.get("new", 0)     for r in rows)
+        total_deleted = sum(r.get("deleted", 0) for r in rows)
+        last_total    = rows[0].get("total", 0)  if rows else 0
+        first_total   = rows[-1].get("total", 0) if rows else 0
+        errors        = sum(1 for r in rows if r.get("status", "OK") != "OK")
 
         summary[profile] = {
             "days_tracked":  len(rows),
@@ -149,16 +200,21 @@ def build_html_email(summary: dict, weekly_data: dict, analysis: str) -> str:
         daily_rows = ""
         for i, r in enumerate(rows):
             bg      = "#f9f9f9" if i % 2 == 0 else "#ffffff"
-            net_str = f"{r['net']:+d}" if r['net'] != 0 else "—"
-            net_col = "#1a7a3c" if r['net'] > 0 else ("#c0392b" if r['net'] < 0 else "#888")
-            new_col = "#1a7a3c" if r['new'] > 0 else "#333"
-            del_col = "#c0392b" if r['deleted'] > 0 else "#333"
+            net     = r.get('net', 0)
+            new     = r.get('new', 0)
+            deleted = r.get('deleted', 0)
+            total   = r.get('total', 0)
+            
+            net_str = f"{net:+d}" if net != 0 else "—"
+            net_col = "#1a7a3c" if net > 0 else ("#c0392b" if net < 0 else "#888")
+            new_col = "#1a7a3c" if new > 0 else "#333"
+            del_col = "#c0392b" if deleted > 0 else "#333"
             daily_rows += f"""
             <tr style="background:{bg};">
               <td style="padding:8px 12px;border-bottom:1px solid #eee;">{r['date']}</td>
-              <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;font-weight:600;">{r['total']}</td>
-              <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;color:{new_col};font-weight:{'bold' if r['new']>0 else 'normal'};">{r['new']:+d}</td>
-              <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;color:{del_col};">{r['deleted']}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;font-weight:600;">{total}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;color:{new_col};font-weight:{'bold' if new>0 else 'normal'};">{new:+d}</td>
+              <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;color:{del_col};">{deleted}</td>
               <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;color:{net_col};font-weight:bold;">{net_str}</td>
             </tr>"""
 
@@ -275,7 +331,7 @@ Dane z ostatnich 7 dni:
 {json.dumps(data_for_ai, ensure_ascii=False, indent=2)}
 
 Napisz zwięzłą analizę (5-8 zdań) po polsku. Uwzględnij:
-- Ogólny trend na rynku pokoi w Lublinie (profil wszystkie-lublin)
+- Ogólny trend na rynku pokoi w Lublinie
 - Aktywność poszczególnych wynajmujących
 - Czy rynek jest aktywny czy spokojny w tym tygodniu
 - Krótką rekomendację dla obserwującego rynek
