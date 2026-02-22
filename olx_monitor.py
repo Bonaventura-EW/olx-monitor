@@ -80,34 +80,42 @@ def extract_price_from_card(card_text: str) -> int:
     Walidacja: cena powinna być między MIN_PRICE a MAX_PRICE
     Jeśli poza zakresem — zwraca 0 (cena niepewna/anomalna)
     
+    POPRAWKA: Jeśli znajdzie wiele cen, bierze NAJNIŻSZĄ w prawidłowym zakresie
+    (aby uniknąć parsowania sum: czynsz + media + kaucja)
+    
     Przykłady:
       "899 zł/mies" → 899
       "2 299 zł" → 2299
       "1200zł" → 1200
       "cena 0 zł" → 0 (cena nie podana)
       "58640 zł" → 0 (anomalnie wysoko — błąd parsowania)
+      "1200 zł + 400 zł media = 1600 zł" → 1200 (najniższa prawidłowa)
     """
-    # Szukaj (liczba ze spacjami) zł
-    m = re.search(r"(\d[\d\s]*\d|\d)\s*zł", card_text, re.IGNORECASE)
-    if not m:
+    # Znajdź WSZYSTKIE wystąpienia ceny
+    matches = re.findall(r"(\d[\d\s]*\d|\d)\s*zł", card_text, re.IGNORECASE)
+    if not matches:
         return 0
     
-    # Wyciągnij liczby
-    price_str = re.sub(r"[^\d]", "", m.group(1))
-    if not price_str or price_str == "0":
+    # Przekonwertuj wszystkie znalezione ceny na liczby
+    prices = []
+    for match in matches:
+        price_str = re.sub(r"[^\d]", "", match)
+        if not price_str or price_str == "0":
+            continue
+        try:
+            price = int(price_str)
+            # Dodaj tylko ceny w prawidłowym zakresie
+            if MIN_PRICE <= price <= MAX_PRICE:
+                prices.append(price)
+        except ValueError:
+            continue
+    
+    # Jeśli nie znaleziono żadnej prawidłowej ceny, zwróć 0
+    if not prices:
         return 0
     
-    try:
-        price = int(price_str)
-    except ValueError:
-        return 0
-    
-    # Walidacja zakresu
-    if price < MIN_PRICE or price > MAX_PRICE:
-        # Anomalna cena — zwróć 0 i zaloguj ostrzeżenie
-        return 0
-    
-    return price
+    # Zwróć NAJNIŻSZĄ cenę (główny czynsz, bez dodatków)
+    return min(prices)
 
 
 # ── CROSS-CHECK: weryfikacja liczby ogłoszeń ─────────────
