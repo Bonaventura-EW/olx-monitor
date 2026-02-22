@@ -61,13 +61,21 @@ jobs:
 
       - name: Zaktualizuj dashboard (wstrzyknij świeże dane do HTML)
         run: |
+          # BŁĄD 13: Sprawdź istnienie plików przed przetwarzaniem
+          if [ ! -f olx_dashboard.html ]; then
+            echo "⚠  Brak olx_dashboard.html – pomijam aktualizację dashboard"
+            exit 0
+          fi
+          
           if [ -f data/price_history.json ]; then
             python - << 'PYEOF'
           import json, re, os
 
+          # Wczytaj price_history
           with open("data/price_history.json", "r", encoding="utf-8") as f:
               history = json.load(f)
 
+          # Wczytaj market_total z last_run.json
           market_total = None
           if os.path.exists("data/last_run.json"):
               with open("data/last_run.json", "r", encoding="utf-8") as f:
@@ -96,7 +104,7 @@ jobs:
               else:
                   html = html.replace("</script>", "\n" + inject_mt + "\n</script>", 1)
 
-          # Wstrzyknij LAST_RUN (czas ostatniego skanu z last_run.json)
+          # Wstrzyknij LAST_RUN (czas ostatniego skanu)
           if os.path.exists("data/last_run.json"):
               with open("data/last_run.json", "r", encoding="utf-8") as f_lr:
                   last_run_data = json.load(f_lr)
@@ -108,26 +116,29 @@ jobs:
                   else:
                       html = html.replace("</script>", "\n" + inject_lr + "\n</script>", 1)
 
-          # Wstrzyknij PROFILES_DATA ze świeżego profiles_state.json
+          # BŁĄD 12: Wstrzyknij PROFILES_DATA z poprawioną obsługą wieloliniowego JSON
           if os.path.exists("data/profiles_state.json"):
               with open("data/profiles_state.json", "r", encoding="utf-8") as f_ps:
                   profiles_state = json.load(f_ps)
               inject_pd = f"window.__PROFILES_DATA__ = {json.dumps(profiles_state, ensure_ascii=False)};"
+              
               if "window.__PROFILES_DATA__" in html:
-                  # Podmień całą linię window.__PROFILES_DATA__ = ...;
-                  # Regex obsługuje null, {} oraz wieloliniowy JSON
+                  # Użyj DOTALL do obsługi wieloliniowego JSON
                   html = re.sub(
-                      r"window\.__PROFILES_DATA__\s*=\s*(?:null|\{[^}]*\}|\{.*?\});",
+                      r"window\.__PROFILES_DATA__\s*=\s*(?:null|\{.*?\});",
                       inject_pd,
                       html,
                       flags=re.DOTALL
                   )
-                  # Fallback: jeśli regex nie trafił (np. wartość ma zagnieżdżone {})
-                  if inject_pd not in html:
-                      html = html.replace(
-                          "window.__PROFILES_DATA__ = null;",
-                          inject_pd
-                      )
+                  
+                  # FALLBACK: Jeśli regex nie zadziałał (wielopoziomowy JSON)
+                  if inject_pd not in html and "window.__PROFILES_DATA__" in html:
+                      # Znajdź początek i koniec deklaracji
+                      start = html.find("window.__PROFILES_DATA__ = ")
+                      if start != -1:
+                          end = html.find(";", start)
+                          if end != -1:
+                              html = html[:start] + inject_pd + html[end+1:]
               else:
                   html = html.replace("</script>", "\n" + inject_pd + "\n</script>", 1)
 
@@ -144,11 +155,11 @@ jobs:
         run: |
           git config user.name  "OLX Monitor Bot"
           git config user.email "bot@github-actions"
-          git add data/olx_monitoring.xlsx
-          git add data/price_history.json   || true
-          git add data/profiles_state.json  || true
-          git add data/last_run.json        || true
-          git add olx_dashboard.html        || true
+          git add data/olx_monitoring.xlsx     || true
+          git add data/price_history.json      || true
+          git add data/profiles_state.json     || true
+          git add data/last_run.json           || true
+          git add olx_dashboard.html           || true
           git diff --cached --quiet && echo "Brak zmian do zapisania" && exit 0
           git commit -m "📊 OLX Monitor $(date +'%Y-%m-%d %H:%M')"
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/Bonaventura-EW/olx-monitor.git
