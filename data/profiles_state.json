@@ -39,6 +39,12 @@
         "total": 0,
         "newCount": 0,
         "goneCount": 0
+      },
+      {
+        "date": "23 lut 2026",
+        "total": 0,
+        "newCount": 0,
+        "goneCount": 0
       }
     ]
   },
@@ -53,7 +59,7 @@
         "status": "existing",
         "created": "19.12.2025",
         "daysOld": 65,
-        "date": "22 lut",
+        "date": "23 lut",
         "profile": "poqui"
       },
       {
@@ -64,7 +70,7 @@
         "status": "existing",
         "created": "19.01.2026",
         "daysOld": 34,
-        "date": "22 lut",
+        "date": "23 lut",
         "profile": "poqui"
       },
       {
@@ -75,7 +81,7 @@
         "status": "existing",
         "created": "28.10.2025",
         "daysOld": 117,
-        "date": "22 lut",
+        "date": "23 lut",
         "profile": "poqui"
       },
       {
@@ -85,8 +91,8 @@
         "url": "https://www.olx.pl/d/oferta/przytulny-pokoj-blisko-politechniki-ul-przytulna-CID3-ID17NeTz.html",
         "status": "existing",
         "created": "10.10.2025",
-        "daysOld": 135,
-        "date": "22 lut",
+        "daysOld": 136,
+        "date": "23 lut",
         "profile": "poqui"
       }
     ],
@@ -124,6 +130,12 @@
       },
       {
         "date": "22 lut 2026",
+        "total": 4,
+        "newCount": 0,
+        "goneCount": 0
+      },
+      {
+        "date": "23 lut 2026",
         "total": 4,
         "newCount": 0,
         "goneCount": 0
@@ -141,7 +153,7 @@
         "status": "existing",
         "created": "11.08.2025",
         "daysOld": 195,
-        "date": "22 lut",
+        "date": "23 lut",
         "profile": "pokojewlublinie"
       },
       {
@@ -152,7 +164,7 @@
         "status": "existing",
         "created": "19.01.2026",
         "daysOld": 34,
-        "date": "22 lut",
+        "date": "23 lut",
         "profile": "pokojewlublinie"
       }
     ],
@@ -190,6 +202,12 @@
       },
       {
         "date": "22 lut 2026",
+        "total": 2,
+        "newCount": 0,
+        "goneCount": 0
+      },
+      {
+        "date": "23 lut 2026",
         "total": 2,
         "newCount": 0,
         "goneCount": 0
@@ -236,6 +254,12 @@
         "total": 0,
         "newCount": 0,
         "goneCount": 0
+      },
+      {
+        "date": "23 lut 2026",
+        "total": 0,
+        "newCount": 0,
+        "goneCount": 0
       }
     ]
   },
@@ -250,7 +274,7 @@
         "status": "existing",
         "created": "20.09.2024",
         "daysOld": 520,
-        "date": "22 lut",
+        "date": "23 lut",
         "profile": "dawnypatron"
       },
       {
@@ -261,7 +285,7 @@
         "status": "existing",
         "created": "05.12.2025",
         "daysOld": 79,
-        "date": "22 lut",
+        "date": "23 lut",
         "profile": "dawnypatron"
       }
     ],
@@ -299,6 +323,12 @@
       },
       {
         "date": "22 lut 2026",
+        "total": 2,
+        "newCount": 0,
+        "goneCount": 0
+      },
+      {
+        "date": "23 lut 2026",
         "total": 2,
         "newCount": 0,
         "goneCount": 0
