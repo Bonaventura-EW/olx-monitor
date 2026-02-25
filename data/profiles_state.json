@@ -51,6 +51,12 @@
         "total": 0,
         "newCount": 0,
         "goneCount": 0
+      },
+      {
+        "date": "25 lut 2026",
+        "total": 0,
+        "newCount": 0,
+        "goneCount": 0
       }
     ]
   },
@@ -58,36 +64,14 @@
     "url": "https://www.olx.pl/oferty/uzytkownik/p8eWV/",
     "current": [
       {
-        "id": "mieszkanie-z-klimatyzacja-5-minut-od-umcs-up-kul-dlugosza-CID3-ID18KAEc",
-        "title": "Mieszkanie z KLIMATYZACJĄ 5 minut od UMCS, UP, KUL - Długosza",
-        "price": 2049,
-        "url": "https://www.olx.pl/d/oferta/mieszkanie-z-klimatyzacja-5-minut-od-umcs-up-kul-dlugosza-CID3-ID18KAEc.html",
-        "status": "existing",
-        "created": "19.12.2025",
-        "daysOld": 66,
-        "date": "24 lut",
-        "profile": "poqui"
-      },
-      {
-        "id": "swiezo-wykonczone-mieszkanie-z-duzym-balkonem-ponikwoda-CID3-ID1951OR",
-        "title": "Świeżo wykończone mieszkanie z dużym balkonem - Ponikwoda",
-        "price": 2299,
-        "url": "https://www.olx.pl/d/oferta/swiezo-wykonczone-mieszkanie-z-duzym-balkonem-ponikwoda-CID3-ID1951OR.html",
-        "status": "existing",
-        "created": "19.01.2026",
-        "daysOld": 35,
-        "date": "24 lut",
-        "profile": "poqui"
-      },
-      {
         "id": "kawalerka-po-remoncie-z-funkcjonalna-antresola-ul-jana-sawy-CID3-ID183ger",
         "title": "Kawalerka po remoncie z funkcjonalną antresolą - ul. Jana Sawy",
         "price": 2499,
         "url": "https://www.olx.pl/d/oferta/kawalerka-po-remoncie-z-funkcjonalna-antresola-ul-jana-sawy-CID3-ID183ger.html",
         "status": "existing",
         "created": "28.10.2025",
-        "daysOld": 118,
-        "date": "24 lut",
+        "daysOld": 119,
+        "date": "25 lut",
         "profile": "poqui"
       },
       {
@@ -97,12 +81,31 @@
         "url": "https://www.olx.pl/d/oferta/przytulny-pokoj-blisko-politechniki-ul-przytulna-CID3-ID17NeTz.html",
         "status": "existing",
         "created": "10.10.2025",
-        "daysOld": 137,
-        "date": "24 lut",
+        "daysOld": 138,
+        "date": "25 lut",
+        "profile": "poqui"
+      },
+      {
+        "id": "mieszkanie-z-klimatyzacja-5-minut-od-umcs-up-kul-dlugosza-CID3-ID18KAEc",
+        "title": "Mieszkanie z KLIMATYZACJĄ 5 minut od UMCS, UP, KUL - Długosza",
+        "price": 2049,
+        "url": "https://www.olx.pl/d/oferta/mieszkanie-z-klimatyzacja-5-minut-od-umcs-up-kul-dlugosza-CID3-ID18KAEc.html",
+        "status": "existing",
+        "created": "19.12.2025",
+        "daysOld": 67,
+        "date": "25 lut",
         "profile": "poqui"
       }
     ],
-    "gone": [],
+    "gone": [
+      {
+        "id": "swiezo-wykonczone-mieszkanie-z-duzym-balkonem-ponikwoda-CID3-ID1951OR",
+        "title": "Świeżo wykończone mieszkanie z dużym balkonem - Ponikwoda",
+        "price": 2299,
+        "url": "https://www.olx.pl/d/oferta/swiezo-wykonczone-mieszkanie-z-duzym-balkonem-ponikwoda-CID3-ID1951OR.html",
+        "date": "25 lut"
+      }
+    ],
     "history": [
       {
         "date": "17 lut 2026",
@@ -151,6 +154,12 @@
         "total": 4,
         "newCount": 0,
         "goneCount": 0
+      },
+      {
+        "date": "25 lut 2026",
+        "total": 3,
+        "newCount": 0,
+        "goneCount": 1
       }
     ]
   },
@@ -164,8 +173,8 @@
         "url": "https://www.olx.pl/d/oferta/wolny-od-zaraz-super-lokalizacja-blisko-centrum-ul-paganiniego-12-CID3-ID195dLc.html",
         "status": "existing",
         "created": "19.01.2026",
-        "daysOld": 35,
-        "date": "24 lut",
+        "daysOld": 36,
+        "date": "25 lut",
         "profile": "pokojewlublinie"
       },
       {
@@ -175,8 +184,8 @@
         "url": "https://www.olx.pl/d/oferta/wolny-od-zaraz-pokoj-jedynka-ul-romanowskiego-58-CID3-ID16ZeYm.html",
         "status": "existing",
         "created": "11.08.2025",
-        "daysOld": 196,
-        "date": "24 lut",
+        "daysOld": 197,
+        "date": "25 lut",
         "profile": "pokojewlublinie"
       }
     ],
@@ -226,6 +235,12 @@
       },
       {
         "date": "24 lut 2026",
+        "total": 2,
+        "newCount": 0,
+        "goneCount": 0
+      },
+      {
+        "date": "25 lut 2026",
         "total": 2,
         "newCount": 0,
         "goneCount": 0
@@ -284,6 +299,12 @@
         "total": 0,
         "newCount": 0,
         "goneCount": 0
+      },
+      {
+        "date": "25 lut 2026",
+        "total": 0,
+        "newCount": 0,
+        "goneCount": 0
       }
     ]
   },
@@ -297,8 +318,8 @@
         "url": "https://www.olx.pl/d/oferta/ladny-pokoj-jednoosobowy-wynajme-duzy-pokoj-w-centrum-ul-niecala-4-CID3-ID122jPM.html",
         "status": "existing",
         "created": "20.09.2024",
-        "daysOld": 521,
-        "date": "24 lut",
+        "daysOld": 522,
+        "date": "25 lut",
         "profile": "dawnypatron"
       },
       {
@@ -308,8 +329,8 @@
         "url": "https://www.olx.pl/d/oferta/mam-do-wynajecia-pokoj-dla-os-pracujacej-lub-studenta-narutowicza-14-CID3-ID18ySfv.html",
         "status": "existing",
         "created": "05.12.2025",
-        "daysOld": 80,
-        "date": "24 lut",
+        "daysOld": 81,
+        "date": "25 lut",
         "profile": "dawnypatron"
       }
     ],
@@ -359,6 +380,12 @@
       },
       {
         "date": "24 lut 2026",
+        "total": 2,
+        "newCount": 0,
+        "goneCount": 0
+      },
+      {
+        "date": "25 lut 2026",
         "total": 2,
         "newCount": 0,
         "goneCount": 0
