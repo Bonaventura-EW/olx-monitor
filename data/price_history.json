@@ -78,6 +78,10 @@
       {
         "date": "25 lut",
         "price": 2499
+      },
+      {
+        "date": "26 lut",
+        "price": 2499
       }
     ]
   },
@@ -121,6 +125,10 @@
       {
         "date": "25 lut",
         "price": 549
+      },
+      {
+        "date": "26 lut",
+        "price": 549
       }
     ]
   },
@@ -159,6 +167,10 @@
       },
       {
         "date": "25 lut",
+        "price": 2049
+      },
+      {
+        "date": "26 lut",
         "price": 2049
       }
     ]
@@ -234,6 +246,10 @@
       {
         "date": "25 lut",
         "price": 12640
+      },
+      {
+        "date": "26 lut",
+        "price": 12640
       }
     ]
   },
@@ -276,6 +292,10 @@
       },
       {
         "date": "25 lut",
+        "price": 730
+      },
+      {
+        "date": "26 lut",
         "price": 730
       }
     ]
@@ -320,6 +340,32 @@
       {
         "date": "25 lut",
         "price": 14690
+      },
+      {
+        "date": "26 lut",
+        "price": 14690
+      }
+    ]
+  },
+  "duzy-pokoj-z-balkonem-w-2pokojowym-mieszkaniu-blisko-politechniki-CID3-ID19xpQK": {
+    "title": "Duży pokój z balkonem w 2pokojowym mieszkaniu blisko Politechniki",
+    "profile": "poqui",
+    "created": "25.02.2026",
+    "prices": [
+      {
+        "date": "26 lut",
+        "price": 1665
+      }
+    ]
+  },
+  "nowoczesne-mieszkanie-2-pokojowe-z-balkonem-blisko-umcs-kul-up-CID3-ID19xpwN": {
+    "title": "Nowoczesne mieszkanie 2-pokojowe z balkonem, blisko UMCS, KUL, UP",
+    "profile": "poqui",
+    "created": "25.02.2026",
+    "prices": [
+      {
+        "date": "26 lut",
+        "price": 2499
       }
     ]
   }
