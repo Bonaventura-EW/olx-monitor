@@ -102,6 +102,10 @@
       {
         "date": "3 mar",
         "price": 2499
+      },
+      {
+        "date": "4 mar",
+        "price": 2499
       }
     ]
   },
@@ -169,6 +173,10 @@
       {
         "date": "3 mar",
         "price": 549
+      },
+      {
+        "date": "4 mar",
+        "price": 549
       }
     ]
   },
@@ -231,6 +239,10 @@
       },
       {
         "date": "3 mar",
+        "price": 2049
+      },
+      {
+        "date": "4 mar",
         "price": 2049
       }
     ]
@@ -330,6 +342,10 @@
       {
         "date": "3 mar",
         "price": 12640
+      },
+      {
+        "date": "4 mar",
+        "price": 12640
       }
     ]
   },
@@ -396,6 +412,10 @@
       },
       {
         "date": "3 mar",
+        "price": 730
+      },
+      {
+        "date": "4 mar",
         "price": 730
       }
     ]
@@ -464,6 +484,10 @@
       {
         "date": "3 mar",
         "price": 14690
+      },
+      {
+        "date": "4 mar",
+        "price": 14690
       }
     ]
   },
@@ -494,6 +518,10 @@
       },
       {
         "date": "3 mar",
+        "price": 1665
+      },
+      {
+        "date": "4 mar",
         "price": 1665
       }
     ]
@@ -526,6 +554,21 @@
       {
         "date": "3 mar",
         "price": 2499
+      },
+      {
+        "date": "4 mar",
+        "price": 2499
+      }
+    ]
+  },
+  "pokoj-z-balkonem-i-widokiem-na-ratusz-scisle-centrum-CID3-ID19ClP1": {
+    "title": "Pokój z balkonem i widokiem na Ratusz – Ścisłe Centrum",
+    "profile": "artymiuk",
+    "created": "03.03.2026",
+    "prices": [
+      {
+        "date": "4 mar",
+        "price": 1300
       }
     ]
   }

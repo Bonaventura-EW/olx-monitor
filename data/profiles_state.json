@@ -1,7 +1,19 @@
 {
   "artymiuk": {
     "url": "https://www.olx.pl/oferty/uzytkownik/BAm3j/",
-    "current": [],
+    "current": [
+      {
+        "id": "pokoj-z-balkonem-i-widokiem-na-ratusz-scisle-centrum-CID3-ID19ClP1",
+        "title": "Pokój z balkonem i widokiem na Ratusz – Ścisłe Centrum",
+        "price": 1300,
+        "url": "https://www.olx.pl/d/oferta/pokoj-z-balkonem-i-widokiem-na-ratusz-scisle-centrum-CID3-ID19ClP1.html",
+        "status": "new",
+        "created": "03.03.2026",
+        "daysOld": 1,
+        "date": "4 mar",
+        "profile": "artymiuk"
+      }
+    ],
     "gone": [],
     "history": [
       {
@@ -93,6 +105,12 @@
         "total": 0,
         "newCount": 0,
         "goneCount": 0
+      },
+      {
+        "date": "4 mar 2026",
+        "total": 1,
+        "newCount": 1,
+        "goneCount": 0
       }
     ]
   },
@@ -106,8 +124,8 @@
         "url": "https://www.olx.pl/d/oferta/przytulny-pokoj-blisko-politechniki-ul-przytulna-CID3-ID17NeTz.html",
         "status": "existing",
         "created": "10.10.2025",
-        "daysOld": 143,
-        "date": "3 mar",
+        "daysOld": 144,
+        "date": "4 mar",
         "profile": "poqui"
       },
       {
@@ -117,8 +135,8 @@
         "url": "https://www.olx.pl/d/oferta/duzy-pokoj-z-balkonem-w-2pokojowym-mieszkaniu-blisko-politechniki-CID3-ID19xpQK.html",
         "status": "existing",
         "created": "25.02.2026",
-        "daysOld": 5,
-        "date": "3 mar",
+        "daysOld": 6,
+        "date": "4 mar",
         "profile": "poqui"
       },
       {
@@ -128,8 +146,8 @@
         "url": "https://www.olx.pl/d/oferta/mieszkanie-z-klimatyzacja-5-minut-od-umcs-up-kul-dlugosza-CID3-ID18KAEc.html",
         "status": "existing",
         "created": "19.12.2025",
-        "daysOld": 73,
-        "date": "3 mar",
+        "daysOld": 74,
+        "date": "4 mar",
         "profile": "poqui"
       },
       {
@@ -139,8 +157,8 @@
         "url": "https://www.olx.pl/d/oferta/nowoczesne-mieszkanie-2-pokojowe-z-balkonem-blisko-umcs-kul-up-CID3-ID19xpwN.html",
         "status": "existing",
         "created": "25.02.2026",
-        "daysOld": 5,
-        "date": "3 mar",
+        "daysOld": 6,
+        "date": "4 mar",
         "profile": "poqui"
       },
       {
@@ -150,8 +168,8 @@
         "url": "https://www.olx.pl/d/oferta/kawalerka-po-remoncie-z-funkcjonalna-antresola-ul-jana-sawy-CID3-ID183ger.html",
         "status": "existing",
         "created": "28.10.2025",
-        "daysOld": 125,
-        "date": "3 mar",
+        "daysOld": 126,
+        "date": "4 mar",
         "profile": "poqui"
       }
     ],
@@ -246,6 +264,12 @@
         "total": 5,
         "newCount": 0,
         "goneCount": 0
+      },
+      {
+        "date": "4 mar 2026",
+        "total": 5,
+        "newCount": 0,
+        "goneCount": 0
       }
     ]
   },
@@ -253,25 +277,25 @@
     "url": "https://www.olx.pl/oferty/uzytkownik/3cxbz/",
     "current": [
       {
-        "id": "wolny-od-zaraz-pokoj-jedynka-ul-romanowskiego-58-CID3-ID16ZeYm",
-        "title": "WOLNY OD ZARAZ! Pokój jedynka, ul. Romanowskiego 58",
-        "price": 0,
-        "url": "https://www.olx.pl/d/oferta/wolny-od-zaraz-pokoj-jedynka-ul-romanowskiego-58-CID3-ID16ZeYm.html",
-        "status": "existing",
-        "created": "11.08.2025",
-        "daysOld": 203,
-        "date": "3 mar",
-        "profile": "pokojewlublinie"
-      },
-      {
         "id": "wolny-od-zaraz-super-lokalizacja-blisko-centrum-ul-paganiniego-12-CID3-ID195dLc",
         "title": "WOLNY OD ZARAZ! Super lokalizacja, blisko centrum, ul. Paganiniego 12",
         "price": 12640,
         "url": "https://www.olx.pl/d/oferta/wolny-od-zaraz-super-lokalizacja-blisko-centrum-ul-paganiniego-12-CID3-ID195dLc.html",
         "status": "existing",
         "created": "19.01.2026",
-        "daysOld": 42,
-        "date": "3 mar",
+        "daysOld": 43,
+        "date": "4 mar",
+        "profile": "pokojewlublinie"
+      },
+      {
+        "id": "wolny-od-zaraz-pokoj-jedynka-ul-romanowskiego-58-CID3-ID16ZeYm",
+        "title": "WOLNY OD ZARAZ! Pokój jedynka, ul. Romanowskiego 58",
+        "price": 0,
+        "url": "https://www.olx.pl/d/oferta/wolny-od-zaraz-pokoj-jedynka-ul-romanowskiego-58-CID3-ID16ZeYm.html",
+        "status": "existing",
+        "created": "11.08.2025",
+        "daysOld": 204,
+        "date": "4 mar",
         "profile": "pokojewlublinie"
       }
     ],
@@ -363,6 +387,12 @@
       },
       {
         "date": "3 mar 2026",
+        "total": 2,
+        "newCount": 0,
+        "goneCount": 0
+      },
+      {
+        "date": "4 mar 2026",
         "total": 2,
         "newCount": 0,
         "goneCount": 0
@@ -463,6 +493,12 @@
         "total": 0,
         "newCount": 0,
         "goneCount": 0
+      },
+      {
+        "date": "4 mar 2026",
+        "total": 0,
+        "newCount": 0,
+        "goneCount": 0
       }
     ]
   },
@@ -476,8 +512,8 @@
         "url": "https://www.olx.pl/d/oferta/ladny-pokoj-jednoosobowy-wynajme-duzy-pokoj-w-centrum-ul-niecala-4-CID3-ID122jPM.html",
         "status": "existing",
         "created": "20.09.2024",
-        "daysOld": 528,
-        "date": "3 mar",
+        "daysOld": 529,
+        "date": "4 mar",
         "profile": "dawnypatron"
       },
       {
@@ -487,8 +523,8 @@
         "url": "https://www.olx.pl/d/oferta/mam-do-wynajecia-pokoj-dla-os-pracujacej-lub-studenta-narutowicza-14-CID3-ID18ySfv.html",
         "status": "existing",
         "created": "05.12.2025",
-        "daysOld": 87,
-        "date": "3 mar",
+        "daysOld": 88,
+        "date": "4 mar",
         "profile": "dawnypatron"
       }
     ],
@@ -580,6 +616,12 @@
       },
       {
         "date": "3 mar 2026",
+        "total": 2,
+        "newCount": 0,
+        "goneCount": 0
+      },
+      {
+        "date": "4 mar 2026",
         "total": 2,
         "newCount": 0,
         "goneCount": 0

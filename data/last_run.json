@@ -1,13 +1,13 @@
 {
-  "run_at": "2026-03-03 08:05:48",
-  "total_listings": 9,
-  "dates_found": 9,
-  "market_total": 440,
+  "run_at": "2026-03-04 08:03:10",
+  "total_listings": 10,
+  "dates_found": 10,
+  "market_total": 443,
   "crosscheck": [
     {
       "profile": "artymiuk",
-      "scraped": 0,
-      "official": 0,
+      "scraped": 1,
+      "official": 1,
       "ok": true
     },
     {
